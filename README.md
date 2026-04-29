@@ -57,4 +57,18 @@ Swagger UI: `http://localhost:8000/docs`
 
 ## 참조 문서
 
-`docs/` 폴더 내 명세 8종 참조.
+`docs/` 폴더 내 명세 문서 참조.
+
+| 파일 | 설명 |
+|---|---|
+| `frame_spec_backend_v2.md` | 백엔드 프레임 명세 |
+| `api_spec_v4.md` | API 엔드포인트 명세 |
+| `db_schema_v3.md` | DB 스키마 명세 |
+| `exception_spec_v4.md` | 예외 코드 인덱스 |
+| `exception_design_v2.md` | 예외 처리 구현 가이드 |
+| `pipeline_output_spec_v5.md` | 파이프라인 출력 명세 |
+| `doc1_technical_pipeline_v9.md` | 파이프라인 기술 명세 |
+| `doc2_pattern_definitions_v2.md` | 패턴 정의 |
+| `doc3_research_proposal_v11.md` | 연구 제안서 |
+| `web_plan_v6.md` | 웹 서비스 기획서 |
+| `CLAUDE.md` | AI 코딩 어시스턴트 컨텍스트 |
