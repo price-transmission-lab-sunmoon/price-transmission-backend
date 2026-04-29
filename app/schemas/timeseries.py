@@ -1,8 +1,10 @@
 """Pydantic DTO — 시계열 응답 envelope + /stream, /scatter, /raw-prices, /stat-series."""
 from __future__ import annotations
-from pydantic import BaseModel, field_validator
-from typing import Literal
+
 from datetime import date
+from typing import Literal
+
+from pydantic import BaseModel, field_validator
 
 
 def _validate_period(v: str | date | None) -> str | None:

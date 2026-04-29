@@ -1,10 +1,21 @@
 """ORM 모델 — anomaly_results, asymmetry_results (db_schema_v3 §이상 탐지 테이블)."""
 from sqlalchemy import (
-    Boolean, Column, Date, ForeignKey, Integer, Numeric, SmallInteger,
-    String, TIMESTAMP, UniqueConstraint
+    TIMESTAMP,
+    Boolean,
+    Column,
+    Date,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    SmallInteger,
+    String,
+    UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.sql import func
+
 from app.db.base import Base
 
 
@@ -61,6 +72,14 @@ class AnomalyResult(Base):
 
     __table_args__ = (
         UniqueConstraint("commodity_id", "segment_id", "period", name="uq_anomaly_commodity_segment_period"),
+        # db_schema_v3 §anomaly_results 인덱스
+        Index("idx_anomaly_commodity_period", "commodity_id", text("period DESC")),
+        Index("idx_anomaly_grade", "confidence_grade", text("period DESC")),
+        Index(
+            "idx_anomaly_is_new",
+            "is_new",
+            postgresql_where=text("is_new = TRUE"),
+        ),
     )
 
 

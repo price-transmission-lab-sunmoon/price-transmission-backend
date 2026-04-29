@@ -1,7 +1,10 @@
 """Redis 클라이언트 초기화 및 ping — exception_spec_v2 DB-CACHE-001 대응."""
 from __future__ import annotations
+
 import logging
+
 import redis.asyncio as aioredis
+
 from app.core.config import settings
 
 logger = logging.getLogger("app")

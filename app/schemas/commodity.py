@@ -1,8 +1,10 @@
 """Pydantic DTO — /commodities, /commodities/{id}, /segments 응답 (api_spec_v4 1:1 대응)."""
 from __future__ import annotations
-from pydantic import BaseModel, field_validator, model_serializer
-from typing import Literal
+
 from datetime import date
+from typing import Literal
+
+from pydantic import BaseModel, field_validator
 
 
 def _date_to_yyyymm(d: date | str | None) -> str | None:

@@ -1,6 +1,8 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import field_validator
 from typing import Literal
+
+from pydantic import ValidationError, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
 from app.core.exceptions import ConfigError
 
 
@@ -27,25 +29,33 @@ class Settings(BaseSettings):
     @classmethod
     def validate_rolling_window(cls, v: int) -> int:
         if v <= 0:
-            raise ConfigError("CFG-CORE-003", "ROLLING_WINDOW은 양수여야 합니다.", {"value": v})
+            raise ValueError("ROLLING_WINDOW은 양수여야 합니다.")
         return v
 
     @field_validator("contamination")
     @classmethod
     def validate_contamination(cls, v: float) -> float:
         if not 0 < v < 1:
-            raise ConfigError("CFG-CORE-003", "CONTAMINATION은 0~1 사이여야 합니다.", {"value": v})
+            raise ValueError("CONTAMINATION은 0 초과 1 미만이어야 합니다.")
         return v
 
 
 def get_settings() -> Settings:
+    """설정 로딩 — 필수 변수 누락(CFG-CORE-001) vs 범위 위반(CFG-CORE-003) 분리."""
     try:
         return Settings()
-    except Exception as e:
+    except ValidationError as e:
+        error_types = [err["type"] for err in e.errors()]
+        if any(t == "missing" for t in error_types):
+            raise ConfigError(
+                "CFG-CORE-001",
+                "필수 환경 변수 누락 (DATABASE_URL, REDIS_URL 등)",
+                {"missing_fields": [err["loc"] for err in e.errors() if err["type"] == "missing"]},
+            ) from e
         raise ConfigError(
-            "CFG-CORE-001",
-            f"필수 환경 변수 누락 또는 설정 오류: {e}",
-            {"error": str(e)},
+            "CFG-CORE-003",
+            "파라미터 범위 위반 (ROLLING_WINDOW, CONTAMINATION 등)",
+            {"errors": [{"field": err["loc"], "msg": err["msg"]} for err in e.errors()]},
         ) from e
 
 

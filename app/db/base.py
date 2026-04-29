@@ -1,5 +1,5 @@
-from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import MetaData
+from sqlalchemy.orm import DeclarativeBase
 
 # 명명 규칙 일관성 유지
 convention = {

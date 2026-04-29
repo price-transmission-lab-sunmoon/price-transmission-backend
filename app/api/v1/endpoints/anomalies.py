@@ -1,13 +1,12 @@
 """/anomalies/summary, /anomalies/{id}/detail, /stat-series, /stat-snapshot, /irf, /ml-map 엔드포인트."""
 from fastapi import APIRouter
+
+from app.core.exceptions import APIError
 from app.schemas.anomaly import (
-    AnomalySummaryResponse,
     AnomalyDetailResponse,
-    StatMetrics,
-    MLSummary,
+    AnomalySummaryResponse,
 )
 from app.schemas.timeseries import StatSeriesResponse
-from app.core.exceptions import APIError
 
 router = APIRouter()
 

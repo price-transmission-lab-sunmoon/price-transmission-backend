@@ -1,8 +1,10 @@
 """Pydantic DTO — /anomalies/summary, /anomalies/{id}/detail 응답."""
 from __future__ import annotations
-from pydantic import BaseModel, field_validator
-from typing import Literal
+
 from datetime import date
+from typing import Literal
+
+from pydantic import BaseModel, field_validator
 
 
 def _date_to_yyyymm(d: date | str | None) -> str | None:

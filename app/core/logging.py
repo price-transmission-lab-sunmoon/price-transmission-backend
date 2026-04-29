@@ -1,14 +1,14 @@
 """구조화 JSON 로깅 초기화 — exception_spec_v2 §부록 A 예시 형식."""
+import json
 import logging
 import logging.config
-import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 class _JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         log: dict = {
-            "ts": datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "ts": datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "level": record.levelname,
             "msg": record.getMessage(),
         }

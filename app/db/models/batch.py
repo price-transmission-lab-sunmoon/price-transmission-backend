@@ -1,9 +1,8 @@
 """ORM 모델 — pipeline_runs, data_freshness (db_schema_v3 §배치 관리 테이블)."""
-from sqlalchemy import (
-    Column, Date, ForeignKey, Integer, String, Text, TIMESTAMP, UniqueConstraint
-)
+from sqlalchemy import TIMESTAMP, Column, Date, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.sql import func
+
 from app.db.base import Base
 
 

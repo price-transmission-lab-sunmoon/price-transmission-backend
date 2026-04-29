@@ -1,33 +1,42 @@
 """FastAPI 진입점 — lifespan, CORS, 전역 예외 핸들러, 라우터 등록."""
 from __future__ import annotations
+
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.exceptions import RequestValidationError
 
+from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.api.v1.router import router
+from app.cache.redis import close_redis, ping_redis
 from app.core.config import settings
-from app.core.logging import setup_logging
 from app.core.exceptions import (
     APIError,
+    ConfigError,
     api_error_handler,
-    validation_error_handler,
     internal_error_handler,
+    validation_error_handler,
 )
-from app.cache.redis import ping_redis, close_redis
-from app.api.v1.router import router
+from app.core.logging import setup_logging
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """애플리케이션 수명 주기 — 부팅 sanity check (§5)."""
+    """애플리케이션 수명 주기 — 부팅 sanity check (frame_spec §5).
+
+    - development: DB/Redis 실패 시 WARN 후 기동 (더미 응답 시나리오 지원)
+    - production:  DB/Redis 실패 시 CFG-CORE-001 FATAL, 기동 중단
+    """
     setup_logging(settings.log_level)
     logger = logging.getLogger("app")
     logger.info("서버 시작", extra={"error_code": "BOOT", "context": {"app_env": settings.app_env}})
 
-    # DB ping
-    from app.db.session import engine
+    # ── DB ping ───────────────────────────────────────────────────────────────
     import sqlalchemy
+
+    from app.db.session import engine
+
     try:
         async with engine.connect() as conn:
             await conn.execute(sqlalchemy.text("SELECT 1"))
@@ -39,14 +48,28 @@ async def lifespan(app: FastAPI):
                 extra={"error_code": "CFG-CORE-001", "context": {"error": str(e)}},
             )
         else:
-            raise
+            logger.critical(
+                "PostgreSQL 연결 실패 — 서버 기동 중단",
+                extra={"error_code": "CFG-CORE-001", "context": {"error": str(e)}},
+            )
+            raise ConfigError(
+                "CFG-CORE-001",
+                "PostgreSQL 연결 실패",
+                {"error": str(e)},
+            ) from e
 
-    # Redis ping
-    await ping_redis()
+    # ── Redis ping ────────────────────────────────────────────────────────────
+    redis_ok = await ping_redis()
+    if not redis_ok and settings.app_env != "development":
+        logger.critical(
+            "Redis 연결 실패 — 서버 기동 중단",
+            extra={"error_code": "CFG-CORE-001", "context": {}},
+        )
+        raise ConfigError("CFG-CORE-001", "Redis 연결 실패")
 
     yield
 
-    # 종료
+    # ── 종료 ──────────────────────────────────────────────────────────────────
     await close_redis()
     await engine.dispose()
     logger.info("서버 종료", extra={"error_code": "BOOT", "context": {}})
