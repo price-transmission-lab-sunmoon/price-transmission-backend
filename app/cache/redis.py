@@ -1,4 +1,4 @@
-"""Redis 클라이언트 초기화 및 ping — exception_spec_v2 DB-CACHE-001 대응."""
+"""Redis 클라이언트 초기화 및 ping — exception_spec_vN DB-CACHE-001 대응."""
 from __future__ import annotations
 
 import logging

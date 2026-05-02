@@ -1,4 +1,4 @@
-"""ORM 모델 — commodities, segments, external_events (db_schema_v3 §참조 테이블)."""
+"""ORM 모델 — commodities, segments, external_events (db_schema_vN §참조 테이블)."""
 from sqlalchemy import TIMESTAMP, Boolean, Column, Date, Integer, String
 from sqlalchemy.sql import func
 

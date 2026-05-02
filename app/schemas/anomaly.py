@@ -1,4 +1,4 @@
-"""Pydantic DTO — /anomalies/summary, /anomalies/{id}/detail 응답."""
+"""Pydantic DTO — /anomalies/summary, /anomalies/{id}/detail 응답 (api_spec_vN §이상 탐지 엔드포인트)."""
 from __future__ import annotations
 
 from datetime import date
@@ -44,6 +44,8 @@ class AnomalySummaryResponse(BaseModel):
 
 
 class StatMetrics(BaseModel):
+    model_config = {"protected_namespaces": ()}
+
     transmission_rate: float | None = None
     rolling_mean: float | None = None
     zscore: float | None = None

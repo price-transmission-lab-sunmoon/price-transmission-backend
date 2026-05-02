@@ -1,4 +1,4 @@
-"""APIRouter 통합 — prefix='/api/v1' (api_spec_v4 §공통 사항)."""
+"""APIRouter 통합 — prefix='/api/v1' (api_spec_vN §공통 사항)."""
 from fastapi import APIRouter
 
 from app.api.v1.endpoints import anomalies, commodities, meta

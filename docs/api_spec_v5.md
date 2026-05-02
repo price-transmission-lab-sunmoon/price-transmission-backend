@@ -1,13 +1,14 @@
 # API 명세서
 
 **과제명**: 계량경제학 모형과 머신러닝 기반 소비자 물가 분석 및 이상 탐지를 위한 모델 개발
-**문서 유형**: FastAPI 백엔드 API 명세서 (v3)
+**문서 유형**: FastAPI 백엔드 API 명세서 (v5)
 **작성일**: 2026-04-20
-**작성 기준**: db_schema_v2 / web_plan_v6 / pipeline_output_spec_v5
+**작성 기준** (최신 버전 자동 참조 — `abcd_vN.md` 규칙): `db_schema_vN.md` / `web_plan_vN.md` / `pipeline_output_spec_vN.md`
 **변경 이력**:
 - v1 → v2: 시계열 청크·해상도 구조 전면 보완. `granularity` 파라미터 신설. 미니맵 전용 엔드포인트 분리. 응답 envelope에 범위 echo-back·total_points 추가. `stat-series` 비시계열 metric 분리. breakpoints 중복 제거. scatter 슬라이더 파라미터 추가. 정적 엔드포인트 버전 필드 추가. 에러코드 보완.
-- v2 → v3: design_review_v1 검토 반영. 주요 변경: D-04(judgment_path 생성 주체·패턴별 템플릿 명시), D-06(warmup_end 출처 명시), D-09(이벤트 오버레이 정책 명시), D-11(날짜 직렬화 방침 명시), D-12(raw-prices 레이아웃 5 폴백 정책 확정), D-15(segment_meta 기준선 선택 규칙 명시), D-16(stat-series breakpoints 출처 오기 수정), D-20(에러 envelope context 필드 추가).
-- v3 → v4: pipeline_output_spec v5 반영. 작성 기준 버전 갱신. lag_search_range가 Phase 3 소관임을 주석으로 명시.
+- v2 → v3: design_review v1 검토 반영. 주요 변경: D-04(judgment_path 생성 주체·패턴별 템플릿 명시), D-06(warmup_end 출처 명시), D-09(이벤트 오버레이 정책 명시), D-11(날짜 직렬화 방침 명시), D-12(raw-prices 레이아웃 5 폴백 정책 확정), D-15(segment_meta 기준선 선택 규칙 명시), D-16(stat-series breakpoints 출처 오기 수정), D-20(에러 envelope context 필드 추가).
+- v3 → v4: 당시 pipeline_output_spec v5 반영. 작성 기준 버전 갱신. lag_search_range가 Phase 3 소관임을 주석으로 명시.
+- v4 → v5 (2026-05-02): 본문 정정. `reference_audit_report v1` §4 규칙에 따라 외부 참조 표기를 `abcd_vN.md`로 일괄 전환. 헤더 `작성 기준`의 구버전 참조(당시 db_schema v2, pipeline_output_spec v5) 정정. 본 문서는 이제 `docs/docs_manifest.md`의 버전 해석기에 의해 자동 최신 참조되며, 파일명·본문·푸터는 `_v5`로 정합.
 
 ---
 
@@ -129,7 +130,7 @@
 
 ### `GET /commodities` — 품목 목록
 
-품목 선택 드롭다운(web_plan_v6 §3.3) 및 초기 데이터 로드. 이달 이상 여부 배지 포함.
+품목 선택 드롭다운(web_plan_vN §3.3) 및 초기 데이터 로드. 이달 이상 여부 배지 포함.
 
 **쿼리 파라미터**: 없음
 
@@ -235,7 +236,7 @@
 
 ### `GET /events` — 외부 충격 이벤트 목록
 
-사건 필터 드롭다운(web_plan_v6 §3.4) 데이터 소스. 프론트엔드가 이 목록을 사용하여 시계열 그래프에 배경 음영을 오버레이한다.
+사건 필터 드롭다운(web_plan_vN §3.4) 데이터 소스. 프론트엔드가 이 목록을 사용하여 시계열 그래프에 배경 음영을 오버레이한다.
 
 ```json
 {
@@ -255,7 +256,7 @@
 
 ### `GET /freshness` — 데이터 기준 시점
 
-상단 바 칩 컴포넌트(web_plan_v6 §3.3) 데이터 소스.
+상단 바 칩 컴포넌트(web_plan_vN §3.3) 데이터 소스.
 
 ```json
 {
@@ -271,7 +272,7 @@
 
 ### `GET /anomalies/summary` — 이달의 이상 요약 배너
 
-이달의 이상 요약 배너(web_plan_v6 §3.2) 데이터 소스.
+이달의 이상 요약 배너(web_plan_vN §3.2) 데이터 소스.
 
 **쿼리 파라미터**
 
@@ -319,7 +320,7 @@
 
 ### `GET /commodities/{commodity_id}/stream` — 스트림 그래프
 
-스트림 그래프(web_plan_v6 §4.1)의 전이율 시계열 + 이상 노드. 보조 품목 오버레이 시 동일 엔드포인트를 두 번 호출한다.
+스트림 그래프(web_plan_vN §4.1)의 전이율 시계열 + 이상 노드. 보조 품목 오버레이 시 동일 엔드포인트를 두 번 호출한다.
 
 **쿼리 파라미터**
 
@@ -396,7 +397,7 @@
 
 ### `GET /commodities/{commodity_id}/stream/minimap` — 스트림 미니맵
 
-미니맵(web_plan_v6 §4.1) 전용 엔드포인트. 항상 전체 기간을 `granularity=yearly`로 압축하여 반환한다.
+미니맵(web_plan_vN §4.1) 전용 엔드포인트. 항상 전체 기간을 `granularity=yearly`로 압축하여 반환한다.
 
 **쿼리 파라미터**
 
@@ -437,7 +438,7 @@
 
 ### `GET /commodities/{commodity_id}/scatter` — 전달 구조 산점도
 
-전달 구조 뷰(web_plan_v6 §4.2)의 연결 산점도. 산점도는 항상 월 단위 원본값을 사용한다.
+전달 구조 뷰(web_plan_vN §4.2)의 연결 산점도. 산점도는 항상 월 단위 원본값을 사용한다.
 
 **쿼리 파라미터**
 
@@ -486,7 +487,7 @@
 
 ### `GET /commodities/{commodity_id}/raw-prices` — 원시 시계열
 
-원시 시계열 뷰(web_plan_v6 §4.3). 레이아웃 파라미터로 포함 소스·구간 조합을 결정한다.
+원시 시계열 뷰(web_plan_vN §4.3). 레이아웃 파라미터로 포함 소스·구간 조합을 결정한다.
 
 **쿼리 파라미터**
 
@@ -591,7 +592,7 @@
 
 ### `GET /anomalies/{anomaly_id}/detail` — 분석 수치 패널 통합
 
-분석 수치 패널(web_plan_v6 §6) 초기 렌더링. 통계 수치·ML 판정 요약·패턴 판정 경로를 단일 요청으로 반환. IRF·지표 인라인 시계열·ML 결과맵·비시계열 지표 스냅샷은 별도 엔드포인트로 지연 로드.
+분석 수치 패널(web_plan_vN §6) 초기 렌더링. 통계 수치·ML 판정 요약·패턴 판정 경로를 단일 요청으로 반환. IRF·지표 인라인 시계열·ML 결과맵·비시계열 지표 스냅샷은 별도 엔드포인트로 지연 로드.
 
 **`judgment_path` 생성 주체 (D-04)**: 백엔드 API가 `anomaly_results`·`stat_timeseries`·`ml_scores` 등 여러 테이블을 조합하여 패턴 유형별 템플릿에 따라 동적으로 생성한다. 파이프라인이나 프론트엔드가 아닌 백엔드에서 생성한다.
 
@@ -706,7 +707,7 @@
 
 ### `GET /anomalies/{anomaly_id}/stat-series` — 지표별 인라인 시계열
 
-패널 §계량경제학 수치 항목 클릭 시 펼쳐지는 시계열 그래프(web_plan_v6 §6.2). **시계열 형태인 지표만 처리**. 비시계열 지표(IQR 박스플롯, 비대칭 히스토그램)는 `/stat-snapshot` 참조.
+패널 §계량경제학 수치 항목 클릭 시 펼쳐지는 시계열 그래프(web_plan_vN §6.2). **시계열 형태인 지표만 처리**. 비시계열 지표(IQR 박스플롯, 비대칭 히스토그램)는 `/stat-snapshot` 참조.
 
 **쿼리 파라미터**
 
@@ -835,7 +836,7 @@
 
 ### `GET /anomalies/{anomaly_id}/irf` — IRF 차트
 
-패널 §IRF 차트(web_plan_v6 §6.5). 전체 기간 베이스라인 + 하위 기간별 IRF 곡선.
+패널 §IRF 차트(web_plan_vN §6.5). 전체 기간 베이스라인 + 하위 기간별 IRF 곡선.
 
 **쿼리 파라미터**
 
@@ -881,7 +882,7 @@
 
 ### `GET /anomalies/{anomaly_id}/ml-map` — ML 결과맵 투영 데이터
 
-패널 §ML 결과맵(web_plan_v6 §6.3). 모델별 파라미터 분기.
+패널 §ML 결과맵(web_plan_vN §6.3). 모델별 파라미터 분기.
 
 > **OI-15 보류**: `projection_method` 기본값 및 축 확정은 S4 스프린트 내.
 
@@ -925,7 +926,7 @@
 
 ### `GET /meta/pipeline` — 파이프라인 플로우
 
-방법론 탭 §섹션 1(web_plan_v6 §8.2). D3.js가 직접 소비하는 노드-엣지 형식.
+방법론 탭 §섹션 1(web_plan_vN §8.2). D3.js가 직접 소비하는 노드-엣지 형식.
 
 **응답**
 
@@ -966,7 +967,7 @@
 
 ### `GET /meta/analysis-params` — 파이프라인 파라미터 기준값
 
-방법론 탭 §섹션 2·3(web_plan_v6 §8.2).
+방법론 탭 §섹션 2·3(web_plan_vN §8.2).
 
 **응답**
 
@@ -1053,4 +1054,4 @@
 
 ---
 
-*v4 — pipeline_output_spec_v5 반영. Phase 3~7 미구현 구간 응답 필드는 pipeline_output_spec_v5 / db_schema_v2 기준 설계. 파이프라인 구현 완료 후 실제 출력과 대조하여 갱신 필요.*
+*v5 — 당시 pipeline_output_spec v5 반영. Phase 3~7 미구현 구간 응답 필드는 당시 pipeline_output_spec v5 / db_schema v2 기준 설계. 파이프라인 구현 완료 후 실제 출력과 대조하여 갱신 필요. (v5에서 외부 참조 표기를 `abcd_vN.md` 규칙으로 전환, `docs/docs_manifest.md` 버전 해석기 연동)*

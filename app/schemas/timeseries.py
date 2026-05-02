@@ -1,4 +1,4 @@
-"""Pydantic DTO — 시계열 응답 envelope + /stream, /scatter, /raw-prices, /stat-series."""
+"""Pydantic DTO — 시계열 응답 envelope + /stream, /scatter, /raw-prices, /stat-series (api_spec_vN §시계열 엔드포인트)."""
 from __future__ import annotations
 
 from datetime import date

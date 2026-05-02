@@ -4,7 +4,7 @@ Frame 단계 9개 테이블 수동 정의 (frame_spec §8.9, autogenerate 금지
 포함 테이블: pipeline_runs, data_freshness, commodities, segments,
             external_events, raw_prices, stat_timeseries,
             anomaly_results, asymmetry_results
-인덱스·UNIQUE 제약 포함 (db_schema_v3 기준).
+인덱스·UNIQUE 제약 포함 (db_schema_vN 기준).
 
 Revision ID: 0001
 Revises:
@@ -167,7 +167,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id", name="pk_stat_timeseries"),
         sa.UniqueConstraint("commodity_id", "segment_id", "period", name="uq_stat_ts_commodity_segment_period"),
     )
-    # db_schema_v3: period DESC 최신 데이터 조회 최적화
+    # db_schema_vN: period DESC 최신 데이터 조회 최적화
     op.create_index(
         "idx_stat_ts_commodity_segment_period",
         "stat_timeseries",
@@ -214,7 +214,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id", name="pk_anomaly_results"),
         sa.UniqueConstraint("commodity_id", "segment_id", "period", name="uq_anomaly_commodity_segment_period"),
     )
-    # db_schema_v3 §anomaly_results 인덱스 3종
+    # db_schema_vN §anomaly_results 인덱스 3종
     op.create_index(
         "idx_anomaly_commodity_period",
         "anomaly_results",
