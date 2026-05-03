@@ -6,14 +6,20 @@
 
 ## 참조 문서 (docs/ 폴더)
 
-- `doc1_technical_pipeline_v9.md` — 파이프라인 Phase 0~9 기술 명세
-- `doc3_research_proposal_v11.md` — 연구 제안서
-- `web_plan_v6.md` — 웹 서비스 기획서
-- `pipeline_output_spec_v5.md` — 파이프라인 출력 명세
-- `db_schema_v3.md` — DB 스키마 명세 (단일 권위 출처)
-- `api_spec_v4.md` — API 명세 (단일 권위 출처)
-- `exception_spec_v2.md` — 예외 처리 명세
-- `sprint_plan.md` — 스프린트 계획
+> **버전 해석 SoT**: [`docs_manifest.md`](docs_manifest.md) — 아래 모든 `_vN` 표기의 실제 버전·파일명은 본 manifest의 §1 표에서 해석된다. 상위 명세 갱신 시 manifest 한 파일만 고치면 전 문서 참조가 갱신된다. **작업 전 필수**: manifest §1 표의 파일이 `docs/`에 모두 존재하는지 확인 (§2.2 파일 부재 방지 규칙).
+
+- `doc1_technical_pipeline_vN.md` — 파이프라인 Phase 0~9 기술 명세
+- `doc2_pattern_definitions_vN.md` — 패턴 정의
+- `doc3_research_proposal_vN.md` — 연구 제안서
+- `web_plan_vN.md` — 웹 서비스 기획서
+- `pipeline_output_spec_vN.md` — 파이프라인 출력 명세
+- `db_schema_vN.md` — DB 스키마 명세 (단일 권위 출처)
+- `api_spec_vN.md` — API 명세 (단일 권위 출처)
+- `exception_spec_vN.md` — 예외 코드 인덱스 (반복 조회용)
+- `exception_design_vN.md` — 예외 체이닝 설계 (심층 분석용)
+- `frame_spec_backend_vN.md` — 백엔드 Frame 명세
+- `sprint_plan_vN.md` — 스프린트 계획 _(외부 입고 대기)_
+- `feature_dev_list_vN.md` — feat/* 브랜치 기능 개발 목록
 
 ## 기술 스택
 
@@ -48,7 +54,7 @@
 
 ### 에러 응답
 모든 에러는 `{"error": {"code": "...", "message": "...", "context": {...}}}` envelope 사용.
-외부 코드는 `api_spec_v4.md §에러 코드 정의` 13종 + `INTERNAL_ERROR` 1종만 사용.
+외부 코드는 `api_spec_vN.md §에러 코드 정의` 13종 + `INTERNAL_ERROR` 1종만 사용.
 
 ### ORM → Pydantic 변환
 - endpoint에서 ORM 모델 직접 반환 **금지**

@@ -1,4 +1,4 @@
-"""ORM 모델 — anomaly_results, asymmetry_results (db_schema_v3 §이상 탐지 테이블)."""
+"""ORM 모델 — anomaly_results, asymmetry_results (db_schema_vN §이상 탐지 테이블)."""
 from sqlalchemy import (
     TIMESTAMP,
     Boolean,
@@ -72,7 +72,7 @@ class AnomalyResult(Base):
 
     __table_args__ = (
         UniqueConstraint("commodity_id", "segment_id", "period", name="uq_anomaly_commodity_segment_period"),
-        # db_schema_v3 §anomaly_results 인덱스
+        # db_schema_vN §anomaly_results 인덱스
         Index("idx_anomaly_commodity_period", "commodity_id", text("period DESC")),
         Index("idx_anomaly_grade", "confidence_grade", text("period DESC")),
         Index(

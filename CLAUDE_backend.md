@@ -6,7 +6,11 @@
 
 **최초 작성**: 2026-04-28  
 **담당**: PM 최수안  
-**참조 기준 문서**: `db_schema_v3`, `api_spec_v4`, `exception_spec_v4`, `web_plan_v6`, `pipeline_output_spec_v5`, `team_ai_collab_v6`
+**버전 해석 단일 출처 (SoT)**: [`docs/docs_manifest.md`](docs/docs_manifest.md) — 본 파일 및 모든 명세 문서의 `abcd_vN.md` 표기는 manifest §1 표로 해석한다.
+
+**참조 기준 문서** (모두 manifest §1 표로 최신 해석): `db_schema_vN`, `api_spec_vN`, `exception_spec_vN`, `exception_design_vN`, `web_plan_vN`, `pipeline_output_spec_vN`, `team_ai_collab_vN`
+
+**⚠️ 작업 착수 전 필수 체크**: manifest §1 표의 파일이 `docs/`에 모두 존재하는지 확인. 누락 시 작업 중단 + PM 알림 (manifest §2.2).
 
 ---
 
@@ -385,7 +389,7 @@ CLAUDE.md의 내용과 달라진 부분이 있으면 함께 알려줘."
 | 파이프라인 출력 명세 | `docs/pipeline_output_spec_vN.md` |
 | 웹 명세서 | `docs/web_plan_vN.md` |
 
-> `vN`은 현재 최신 버전 번호로 교체한다.
+> 표기 규칙: 본문에서는 `abcd_vN.md` 형식을 그대로 유지한다 (`reference_audit_report v1` §4). `vN` → 실제 파일 해석은 [`docs/docs_manifest.md`](docs/docs_manifest.md) §1 표를 통해 이뤄진다. 구체 버전을 박아두지 않는 이유는 상위 명세 갱신 시 하위 참조 동기화 누락으로 인한 "구버전 정의를 따라 코딩" 사고를 방지하기 위함이다. 클릭 가능한 링크가 필요한 경우(README·PR 본문 등)에만 최신 구체 버전을 사용한다.
 
 ---
 

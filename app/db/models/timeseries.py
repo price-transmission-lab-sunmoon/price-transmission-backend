@@ -1,4 +1,4 @@
-"""ORM 모델 — stat_timeseries, raw_prices (db_schema_v3 §탐지/원시가격 테이블)."""
+"""ORM 모델 — stat_timeseries, raw_prices (db_schema_vN §탐지/원시가격 테이블)."""
 from sqlalchemy import (
     TIMESTAMP,
     Boolean,
@@ -63,7 +63,7 @@ class StatTimeseries(Base):
 
     __table_args__ = (
         UniqueConstraint("commodity_id", "segment_id", "period", name="uq_stat_ts_commodity_segment_period"),
-        # db_schema_v3: period DESC로 최신 데이터 조회 최적화
+        # db_schema_vN: period DESC로 최신 데이터 조회 최적화
         Index("idx_stat_ts_commodity_segment_period", "commodity_id", "segment_id", text("period DESC")),
     )
 

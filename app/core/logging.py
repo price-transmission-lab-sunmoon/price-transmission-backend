@@ -1,4 +1,4 @@
-"""구조화 JSON 로깅 초기화 — exception_spec_v2 §부록 A 예시 형식."""
+"""구조화 JSON 로깅 초기화 — exception_spec_vN §부록 A 예시 형식."""
 import json
 import logging
 import logging.config

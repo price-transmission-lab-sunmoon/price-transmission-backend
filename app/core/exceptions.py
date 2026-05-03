@@ -1,4 +1,4 @@
-"""예외 클래스 계층 + 에러 체이닝 — exception_spec_v4 §부록 A + exception_design_v2 §2 구현."""
+"""예외 클래스 계층 + 에러 체이닝 — exception_spec_vN §부록 A + exception_design_vN §2 구현."""
 from __future__ import annotations
 
 import logging
@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 logger = logging.getLogger("app")
 
 
-# ── 예외 클래스 계층 (exception_spec_v4 §부록 A) ────────────────────────────
+# ── 예외 클래스 계층 (exception_spec_vN §부록 A) ────────────────────────────
 
 class ProjectError(Exception):
     def __init__(self, code: str, message: str, context: dict | None = None):
@@ -40,6 +40,16 @@ class APIError(ProjectError):
         self.public_code = public_code
 
 
+class PipelineError(ProjectError):
+    """파이프라인 단계 예외 (PL-*). phase 속성으로 어느 Phase에서 발생했는지 식별.
+
+    feat/pipeline-phase* 브랜치에서 실제 파이프라인 코드가 추가될 때 사용한다.
+    """
+    def __init__(self, code: str, message: str, context: dict | None = None, phase: str = ""):
+        super().__init__(code, message, context)
+        self.phase = phase
+
+
 class ParseError(ProjectError):
     """DB→API 또는 API→FE 경계에서 발생하는 파싱 예외 (PARSE-*)."""
     def __init__(self, code: str, message: str, context: dict | None = None, boundary: str = ""):
@@ -67,10 +77,10 @@ class ExternalAPIError(ProjectError):
         self.retry_count = retry_count
 
 
-# ── 에러 체이닝 (exception_design_v2 §2) ────────────────────────────────────
+# ── 에러 체이닝 (exception_design_vN §2) ────────────────────────────────────
 
 def _format_chain(chain: list[Exception]) -> str:
-    """예외 체인을 ORIGIN → 현재 순으로 포맷팅 (exception_design_v2 §2.2)."""
+    """예외 체인을 ORIGIN → 현재 순으로 포맷팅 (exception_design_vN §2.2)."""
     lines: list[str] = []
     for i, exc in enumerate(chain):
         if isinstance(exc, ProjectError):
@@ -90,7 +100,7 @@ def _format_chain(chain: list[Exception]) -> str:
 
 
 def trace_error_chain(exc: Exception) -> dict:
-    """예외 체인을 역추적하여 ORIGIN·전파 경로·포맷 문자열 반환 (exception_design_v2 §2.2).
+    """예외 체인을 역추적하여 ORIGIN·전파 경로·포맷 문자열 반환 (exception_design_vN §2.2).
 
     Returns:
         {
@@ -121,7 +131,7 @@ def _error_body(code: str, message: str, context: dict | None = None) -> dict:
     return {"error": body}
 
 
-# ── 전역 예외 핸들러 (exception_design_v2 §2.4 + frame_spec §8.4) ────────────
+# ── 전역 예외 핸들러 (exception_design_vN §2.4 + frame_spec_vN §8.4) ────────────
 
 async def api_error_handler(request: Request, exc: APIError) -> JSONResponse:
     """APIError → http_status / public_code 반환."""
@@ -155,18 +165,21 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
 
 
 async def internal_error_handler(request: Request, exc: Exception) -> JSONResponse:
-    """DBError / ParseError / ExternalAPIError / 기타 → 500 / INTERNAL_ERROR.
+    """DBError / PipelineError / ParseError / ExternalAPIError / 기타 → 500 / INTERNAL_ERROR.
 
     ORIGIN 코드를 보존하여 로깅하고 사용자에게는 INTERNAL_ERROR만 노출
-    (exception_spec_v4 §4 API-INT-001, exception_design_v2 §2.4).
+    (exception_spec_vN §4 API-INT-001, exception_design_vN §2.4).
     """
     result = trace_error_chain(exc)
     origin = result["origin"]
 
     if isinstance(origin, ProjectError):
+        extra_ctx = dict(origin.context)
+        if isinstance(origin, PipelineError) and origin.phase:
+            extra_ctx["phase"] = origin.phase
         logger.error(
             result["formatted"],
-            extra={"error_code": origin.code, "context": origin.context},
+            extra={"error_code": origin.code, "context": extra_ctx},
         )
     else:
         logger.exception(

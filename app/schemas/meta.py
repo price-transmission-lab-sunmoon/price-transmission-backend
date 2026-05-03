@@ -1,4 +1,4 @@
-"""Pydantic DTO — /meta/config, /freshness, /events 응답."""
+"""Pydantic DTO — /meta/config, /freshness, /events, /meta/pipeline, /meta/analysis-params 응답 (api_spec_vN §방법론 엔드포인트)."""
 from __future__ import annotations
 
 from datetime import date

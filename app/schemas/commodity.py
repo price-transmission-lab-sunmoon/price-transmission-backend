@@ -1,4 +1,4 @@
-"""Pydantic DTO — /commodities, /commodities/{id}, /segments 응답 (api_spec_v4 1:1 대응)."""
+"""Pydantic DTO — /commodities, /commodities/{id}, /segments 응답 (api_spec_vN 1:1 대응)."""
 from __future__ import annotations
 
 from datetime import date
@@ -42,6 +42,8 @@ class CommodityListResponse(BaseModel):
 
 
 class SegmentMeta(BaseModel):
+    model_config = {"protected_namespaces": ()}
+
     model_type: Literal["VAR", "VECM"] | None = None
     cointegrated: bool | None = None
     normal_transmission_lag: int | None = None

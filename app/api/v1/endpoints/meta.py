@@ -1,4 +1,4 @@
-"""/meta/config, /meta/pipeline, /meta/analysis-params, /segments, /events, /freshness 엔드포인트."""
+"""/meta/config, /meta/pipeline, /meta/analysis-params, /segments, /events, /freshness 엔드포인트 (api_spec_vN §방법론·설정 엔드포인트)."""
 from fastapi import APIRouter
 
 from app.cache.redis import ping_redis
@@ -53,7 +53,7 @@ async def get_freshness() -> FreshnessResponse:
 
 @router.get("/events", response_model=EventListResponse)
 async def get_events() -> EventListResponse:
-    """외부 충격 이벤트 목록 — db_schema_v3 §external_events 초기 데이터."""
+    """외부 충격 이벤트 목록 — db_schema_vN §external_events 초기 데이터."""
     return EventListResponse(
         events=[
             EventItem(event_key="financial_crisis_2008", label_kr="2008 금융위기", start_date="2008-07", end_date="2009-03", color_hex="#F97316"),
@@ -67,7 +67,7 @@ async def get_events() -> EventListResponse:
 
 @router.get("/segments", response_model=SegmentListResponse)
 async def get_segments() -> SegmentListResponse:
-    """분석 구간 정의 목록 — db_schema_v3 §segments 초기 데이터."""
+    """분석 구간 정의 목록 — db_schema_vN §segments 초기 데이터."""
     return SegmentListResponse(
         segments=[
             SegmentItem(segment_id="A", label_kr="구간 A (국제가→수입단가)", upstream_label="국제가 (원화 환산)", downstream_label="수입단가", applies_to="all", pattern1=True, pattern2=True, pattern3=False, ml_applied=True),
@@ -81,9 +81,9 @@ async def get_segments() -> SegmentListResponse:
 
 @router.get("/meta/pipeline", response_model=MetaPipelineResponse)
 async def get_meta_pipeline() -> MetaPipelineResponse:
-    """파이프라인 플로우 — 정적 데이터 (api_spec_v4 §방법론 엔드포인트)."""
+    """파이프라인 플로우 — 정적 데이터 (api_spec_vN §방법론 엔드포인트)."""
     return MetaPipelineResponse(
-        version="v9",
+        version=settings.pipeline_spec_version,
         nodes=[
             PipelineNode(id="phase0", label="Phase 0", description="데이터 수집·전처리", phase_number=0),
             PipelineNode(id="phase1", label="Phase 1", description="계절 조정 (STL)", phase_number=1),
@@ -118,7 +118,7 @@ async def get_meta_pipeline() -> MetaPipelineResponse:
 async def get_meta_analysis_params() -> MetaAnalysisParamsResponse:
     """파이프라인 파라미터 기준값 — 정적 데이터."""
     return MetaAnalysisParamsResponse(
-        version="v9",
+        version=settings.pipeline_spec_version,
         params={
             "rolling_window": 48,
             "zscore_warning": 2.0,

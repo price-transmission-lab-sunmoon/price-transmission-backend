@@ -18,12 +18,16 @@ class Settings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     cors_allowed_origins: str = "http://localhost:5173"
 
-    # 파이프라인 파라미터 (pipeline_output_spec_v5 §파라미터 표, CFG-CORE-003)
+    # 파이프라인 파라미터 (pipeline_output_spec_vN §파라미터 표, CFG-CORE-003)
     rolling_window: int = 48
     contamination: float = 0.10
     random_state: int = 42
 
     frame_version: str = "0.1.0"
+
+    # doc1_technical_pipeline 현재 버전 (docs/docs_manifest.md §1 표와 일치해야 함)
+    # 버전 갱신 시 manifest §1을 먼저 업데이트한 뒤 이 값을 변경한다.
+    pipeline_spec_version: str = "v10"
 
     @field_validator("rolling_window")
     @classmethod

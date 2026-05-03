@@ -1,15 +1,16 @@
-# 예외처리 코드 명세서 (v4)
+# 예외처리 코드 명세서 (v5)
 
 **과제명**: 계량경제학 모형과 머신러닝 기반 소비자 물가 분석 및 이상 탐지를 위한 모델 개발
 **문서 유형**: 예외 코드 인덱스 — AI 코드 구현·디버깅 프롬프트 첨부용
 **작성일**: 2026-04-28
 **적용 범위**: 백엔드(FastAPI) + DB 적재 레이어 + 파싱 레이어 + 프론트엔드(React)
 **변경 이력**:
-- v1 → v2: pipeline_output_spec v5 반영. PL-P4-001 발생 위치 수정.
-- v2 → v3: 문서 분리. 설계 정보를 `exception_design_v1.md`로 이관.
-- v3 → v4: **계량경제학 파이프라인(PL-*) 전체 제거** — 파이프라인은 예외처리 대상 외. `PARSE-*` 도메인 신규 추가(프레임워크 간 데이터 파싱). `FE-*` 도메인 신규 추가(프론트엔드 React). 기능 개발 브랜치(feature_dev_list_v2) 기준 기능별 예외처리 매핑 추가. 에러 체이닝 예상 출력문 추가.
+- v1 → v2: 당시 pipeline_output_spec v5 반영. PL-P4-001 발생 위치 수정.
+- v2 → v3: 문서 분리. 설계 정보를 당시 exception_design v1 파일로 이관.
+- v3 → v4: **계량경제학 파이프라인(PL-*) 전체 제거** — 파이프라인은 예외처리 대상 외. `PARSE-*` 도메인 신규 추가(프레임워크 간 데이터 파싱). `FE-*` 도메인 신규 추가(프론트엔드 React). 기능 개발 브랜치(당시 feature_dev_list v2) 기준 기능별 예외처리 매핑 추가. 에러 체이닝 예상 출력문 추가.
+- v4 → v5 (2026-05-02): 본문 정정. `reference_audit_report v1` §4 규칙에 따라 외부 참조 표기를 `abcd_vN.md`로 일괄 전환. 구버전 참조(당시 exception_design v1, feature_dev_list v2) 전부 정정. 본 문서는 이제 `docs/docs_manifest.md`의 버전 해석기에 의해 자동 최신 참조되며, 파일명·본문은 `_v5`로 정합.
 
-> **관련 문서**: 에러 체이닝 구현 설계 및 상관관계 매트릭스 → `exception_design_v2.md`
+> **관련 문서**: 에러 체이닝 구현 설계 및 상관관계 매트릭스 → `exception_design_vN.md`
 
 ---
 
@@ -69,7 +70,7 @@ throw new FEError("FE-API-001", "API 응답 파싱 실패", {
 - 예외 클래스를 새로 정의할 때 반드시 §2 인덱스에 있는 코드 중 하나를 사용한다.
 - 해당하는 코드가 없으면 §8 신규 추가 규칙에 따라 `(proposed)` 상태로 제안한다.
 - 로그 메시지는 한국어, 코드·키는 영문 고정.
-- 디버깅 시 ORIGIN 에러 코드 + context 스냅샷을 함께 제시한다. 체인 추적 구현은 `exception_design_v1.md` 참조.
+- 디버깅 시 ORIGIN 에러 코드 + context 스냅샷을 함께 제시한다. 체인 추적 구현은 `exception_design_vN.md` 참조.
 
 ### 1.5 처리 방침 종류
 
@@ -624,7 +625,7 @@ throw new FEError("FE-API-001", "API 응답 파싱 실패", {
 
 ## 8. 기능별 예외처리 매핑
 
-> feature_dev_list_v2.md 기준 브랜치별로 구현해야 할 예외 코드를 발췌한다.  
+> feature_dev_list_vN.md 기준 브랜치별로 구현해야 할 예외 코드를 발췌한다.  
 > Feature 명세 §5 작성 시 이 표를 참조한다.
 
 | 브랜치 | 구현 필수 예외 코드 |
@@ -651,7 +652,7 @@ throw new FEError("FE-API-001", "API 응답 파싱 실패", {
 
 ## 9. 에러 체이닝 예상 출력문
 
-> 에러 체이닝 구현 상세 → `exception_design_v1.md` §2  
+> 에러 체이닝 구현 상세 → `exception_design_vN.md` §2  
 > 아래는 실제 런타임에서 `global_error_handler()` 출력이 어떻게 보일지 시나리오별 예시다.
 
 ### 시나리오 A — DB 연결 실패 → API 응답 실패
@@ -777,7 +778,7 @@ ORIGIN 코드: DB-TX-001
 - **파싱 오류 발생 경계 파악**: `PARSE-*` 코드의 "경계" 항목 확인.
 - **Redis 캐시 의심**: `DB-CACHE-001~002` → `PARSE-REDIS-001` 순으로 확인.
 - **배치 실패 후 서버 상태**: `API-BATCH-001~002` — 서버는 유지됨.
-- **ORIGIN 에러 코드와 context 스냅샷 확인**: `exception_design_v1.md` §2 참조.
+- **ORIGIN 에러 코드와 context 스냅샷 확인**: `exception_design_vN.md` §2 참조.
 
 ---
 
@@ -847,7 +848,7 @@ throw new FEError("FE-D3-002", "D3 스케일 NaN 포함 데이터", {
  "msg": "SQLAlchemy async pool 고갈", "context": {"pool_size": 10, "active": 10, "queue_wait_ms": 5023}}
 ```
 
-에러 체이닝 구현(ORIGIN 추적 + context 스냅샷 출력) → `exception_design_v1.md` 참조.
+에러 체이닝 구현(ORIGIN 추적 + context 스냅샷 출력) → `exception_design_vN.md` 참조.
 
 ---
 

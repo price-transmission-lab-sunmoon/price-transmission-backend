@@ -451,7 +451,7 @@ ML만 단독으로 탐지한 시점은 참고 이상으로 분류하며, 논문 
 
 스프린트 일정 및 작업 내용은 변동이 잦으므로 별도 문서로 독립 관리합니다.
 
-→ `docs/sprint_plan_v%.md` 참조
+→ `docs/sprint_plan_vN.md` 참조 (최신 버전은 `docs/docs_manifest.md`에서 조회)
 ---
 
 ## 10. 웹 서비스 개요
