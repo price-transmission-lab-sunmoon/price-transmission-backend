@@ -1,4 +1,4 @@
-# 예외처리 코드 명세서 (v5)
+# 예외처리 코드 명세서 (v6)
 
 **과제명**: 계량경제학 모형과 머신러닝 기반 소비자 물가 분석 및 이상 탐지를 위한 모델 개발
 **문서 유형**: 예외 코드 인덱스 — AI 코드 구현·디버깅 프롬프트 첨부용
@@ -9,6 +9,10 @@
 - v2 → v3: 문서 분리. 설계 정보를 당시 exception_design v1 파일로 이관.
 - v3 → v4: **계량경제학 파이프라인(PL-*) 전체 제거** — 파이프라인은 예외처리 대상 외. `PARSE-*` 도메인 신규 추가(프레임워크 간 데이터 파싱). `FE-*` 도메인 신규 추가(프론트엔드 React). 기능 개발 브랜치(당시 feature_dev_list v2) 기준 기능별 예외처리 매핑 추가. 에러 체이닝 예상 출력문 추가.
 - v4 → v5 (2026-05-02): 본문 정정. `reference_audit_report v1` §4 규칙에 따라 외부 참조 표기를 `abcd_vN.md`로 일괄 전환. 구버전 참조(당시 exception_design v1, feature_dev_list v2) 전부 정정. 본 문서는 이제 `docs/docs_manifest.md`의 버전 해석기에 의해 자동 최신 참조되며, 파일명·본문은 `_v5`로 정합.
+- v5 → v6 (2026-05-05): `feat/be-api-timeseries` 매핑에 `API-COM-002` 추가.
+  `analysis_start NULL` 발생 범위가 5개 엔드포인트 전체에 걸치고
+  `feat/be-api-reference`와의 일관성 및 디버깅 범위 특정 효율을 위해 추가.
+  (`feature_spec_API-STR_v4 §5.1` 기준)
 
 > **관련 문서**: 에러 체이닝 구현 설계 및 상관관계 매트릭스 → `exception_design_vN.md`
 
@@ -632,7 +636,7 @@ throw new FEError("FE-API-001", "API 응답 파싱 실패", {
 |--------|-------------------|
 | `feat/be-api-reference` | `API-COM-001`, `API-COM-002`, `API-VAL-001`, `API-INT-001`, `CFG-CORE-001`, `DB-CONN-001` |
 | `feat/be-api-anomaly` | `API-ANO-001`, `API-INT-001` |
-| `feat/be-api-timeseries` | `API-COM-001`, `API-STR-001~005`, `API-SEG-001`, `API-LAY-001~002`, `API-INT-001`, `PARSE-DATE-001`, `PARSE-NUM-001` |
+| `feat/be-api-timeseries` | `API-COM-001`, `API-COM-002`, `API-STR-001~005`, `API-SEG-001`, `API-LAY-001~002`, `API-INT-001`, `PARSE-DATE-001`, `PARSE-NUM-001` |
 | `feat/be-api-panel` | `API-ANO-001~003`, `API-MET-001~003`, `API-SEG-001`, `API-INT-001` |
 | `feat/be-api-meta` | `API-INT-001` (정적 응답이므로 최소) |
 | `feat/be-db-pipeline` | `DB-CONN-001~002`, `DB-TX-001`, `DB-UNIQ-001~003`, `DB-FK-001~003`, `DB-TYPE-001~002`, `DB-NN-001~002`, `DB-ARR-001~002`, `DB-RUN-001`, `PARSE-DATE-001`, `PARSE-ARR-001`, `PARSE-ENUM-001` |
