@@ -3,13 +3,17 @@
 """
 from __future__ import annotations
 
+import logging
 from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db
+from app.api.deps import get_db, get_redis
+from app.cache.redis import cache_delete, cache_get, cache_set
+from app.core.config import settings
 from app.core.exceptions import APIError
 from app.schemas.commodity import CommodityDetail, CommodityListResponse
 from app.schemas.timeseries import (
@@ -24,6 +28,9 @@ from app.services import raw_prices as rp_svc
 from app.services import scatter as scatter_svc
 from app.services import stream as stream_svc
 
+import redis.asyncio as aioredis
+
+logger = logging.getLogger("app")
 router = APIRouter()
 
 
@@ -73,11 +80,49 @@ async def get_stream(
     grade: Annotated[str, Query(description="신뢰도 등급 필터 (콤마 구분)")] = "high,medium",
     patterns: Annotated[str, Query(description="패턴 필터 (콤마 구분)")] = "pattern1,pattern2,pattern3",
     db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> StreamResponse:
-    """스트림 그래프 시계열 + 이상 노드 — stat_timeseries 실 DB 조회."""
+    """스트림 그래프 시계열 + 이상 노드 — Redis TTL 캐싱 적용 (feature_spec_BE-REDIS_v2 §3.3)."""
+    # 캐시 키: {prefix}:stream:{commodity_id}:{segment_id}:{from}:{to}:{granularity}
+    # segments/grade/patterns는 캐시 키 구분자로 포함 (§3.3 spec의 segment_id에 대응)
+    seg_key = segments or "all"
+    cache_key = (
+        f"{settings.redis_cache_prefix}:stream:"
+        f"{commodity_id}:{seg_key}:{from_ or 'default'}:{to or 'default'}:{granularity}"
+    )
+
+    # ── Cache HIT 경로 ──────────────────────────────────────────────────────
+    cached = await cache_get(redis, cache_key)
+    if cached is not None:
+        try:
+            result = StreamResponse.model_validate(cached)
+            logger.info(
+                "cache=hit",
+                extra={"error_code": "CACHE", "context": {"cache_key": cache_key}},
+            )
+            return result
+        except ValidationError as e:
+            # PARSE-REDIS-001: API 레이어에서 Pydantic 검증 실패 → 캐시 무효화 후 DB 재조회
+            logger.warning(
+                "Redis 캐시값 Pydantic 검증 실패 — 캐시 무효화 후 DB 재조회 (PARSE-REDIS-001)",
+                extra={
+                    "error_code": "PARSE-REDIS-001",
+                    "context": {
+                        "cache_key": cache_key,
+                        "error_msg": str(e),
+                    },
+                },
+            )
+            await cache_delete(redis, cache_key)
+
+    # ── Cache MISS 경로 — DB 조회 후 캐시 적재 ─────────────────────────────
+    logger.info(
+        "cache=miss",
+        extra={"error_code": "CACHE", "context": {"cache_key": cache_key}},
+    )
     commodity = await ref_svc.get_commodity_detail(db, commodity_id)
     analysis_start, analysis_end = _analysis_dates(commodity, commodity_id)
-    return await stream_svc.get_stream(
+    result = await stream_svc.get_stream(
         db=db,
         commodity_id=commodity_id,
         analysis_start=analysis_start,
@@ -91,6 +136,8 @@ async def get_stream(
         grade_str=grade,
         patterns_str=patterns,
     )
+    await cache_set(redis, cache_key, result.model_dump(mode="json"), ttl=settings.redis_ttl)
+    return result
 
 
 @router.get("/commodities/{commodity_id}/stream/minimap", response_model=StreamMinimapResponse)
@@ -147,11 +194,47 @@ async def get_raw_prices(
     to: Annotated[str | None, Query(description="조회 종료 월 (YYYY-MM)")] = None,
     granularity: Annotated[str, Query(description="집계 단위 (monthly/quarterly/yearly)")] = "monthly",
     db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> RawPricesResponse:
-    """원시 시계열 레이아웃 1~6 — raw_prices 실 DB 조회."""
+    """원시 시계열 레이아웃 1~6 — Redis TTL 캐싱 적용 (feature_spec_BE-REDIS_v2 §3.3)."""
+    # 캐시 키: {prefix}:raw-prices:{commodity_id}:{segment_id}:{from}:{to}:{granularity}:{layout}
+    cache_key = (
+        f"{settings.redis_cache_prefix}:raw-prices:"
+        f"{commodity_id}:all:{from_ or 'default'}:{to or 'default'}:{granularity}:{layout}"
+    )
+
+    # ── Cache HIT 경로 ──────────────────────────────────────────────────────
+    cached = await cache_get(redis, cache_key)
+    if cached is not None:
+        try:
+            result = RawPricesResponse.model_validate(cached)
+            logger.info(
+                "cache=hit",
+                extra={"error_code": "CACHE", "context": {"cache_key": cache_key}},
+            )
+            return result
+        except ValidationError as e:
+            # PARSE-REDIS-001
+            logger.warning(
+                "Redis 캐시값 Pydantic 검증 실패 — 캐시 무효화 후 DB 재조회 (PARSE-REDIS-001)",
+                extra={
+                    "error_code": "PARSE-REDIS-001",
+                    "context": {
+                        "cache_key": cache_key,
+                        "error_msg": str(e),
+                    },
+                },
+            )
+            await cache_delete(redis, cache_key)
+
+    # ── Cache MISS 경로 ─────────────────────────────────────────────────────
+    logger.info(
+        "cache=miss",
+        extra={"error_code": "CACHE", "context": {"cache_key": cache_key}},
+    )
     commodity = await ref_svc.get_commodity_detail(db, commodity_id)
     analysis_start, analysis_end = _analysis_dates(commodity, commodity_id)
-    return await rp_svc.get_raw_prices(
+    result = await rp_svc.get_raw_prices(
         db=db,
         commodity_id=commodity_id,
         route_type=commodity.route_type,
@@ -163,6 +246,8 @@ async def get_raw_prices(
         to_str=to,
         granularity=granularity,
     )
+    await cache_set(redis, cache_key, result.model_dump(mode="json"), ttl=settings.redis_ttl)
+    return result
 
 
 @router.get("/commodities/{commodity_id}/raw-prices/minimap", response_model=RawPricesMinimapResponse)

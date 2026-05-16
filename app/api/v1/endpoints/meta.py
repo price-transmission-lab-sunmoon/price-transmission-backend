@@ -1,9 +1,10 @@
 """/meta/config, /meta/pipeline, /meta/analysis-params, /segments, /events, /freshness,
 /admin/batch/trigger 엔드포인트 (api_spec_vN §방법론·설정 엔드포인트, feature_spec_BE-BATCH_v2 §3.2)."""
 import asyncio
+import hashlib
 
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
@@ -23,6 +24,26 @@ from app.services import reference as ref_svc
 router = APIRouter()
 
 _CACHE_CONTROL = "public, max-age=86400"
+
+
+def _check_etag(request: Request, etag: str) -> Response | None:
+    """If-None-Match 헤더를 비교하여 일치 시 304 Response를 반환한다.
+
+    feature_spec_BE-REDIS_v2 §1.2 ETag 경로 구현.
+    일치하지 않으면 None을 반환하여 정상 응답 흐름으로 진행한다.
+    """
+    client_etag = request.headers.get("if-none-match", "")
+    quoted = f'"{etag}"'
+    if client_etag and (client_etag == quoted or client_etag == etag):
+        return Response(status_code=304, headers={"ETag": quoted, "Cache-Control": _CACHE_CONTROL})
+    return None
+
+
+def _body_etag(body: dict) -> str:
+    """응답 dict의 JSON 문자열로부터 ETag 값(SHA-256 앞 16자)을 생성한다."""
+    import json
+    content = json.dumps(body, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(content.encode()).hexdigest()[:16]
 
 
 @router.get("/meta/config", response_model=MetaConfigResponse)
@@ -58,10 +79,20 @@ async def get_freshness(
 
 @router.get("/events")
 async def get_events(
+    request: Request,
     db: AsyncSession = Depends(get_db),
-) -> JSONResponse:
-    """외부 충격 이벤트 목록 — ETag + Cache-Control (api_spec_vN §GET /events)."""
+) -> JSONResponse | Response:
+    """외부 충격 이벤트 목록 — ETag + Cache-Control + If-None-Match 304 처리.
+
+    feature_spec_BE-REDIS_v2 §1.2 ETag 경로: If-None-Match 일치 시 304 반환.
+    """
     response, etag = await ref_svc.get_events(db)
+
+    # If-None-Match 비교 — 304 조건부 응답
+    not_modified = _check_etag(request, etag)
+    if not_modified is not None:
+        return not_modified
+
     return JSONResponse(
         content=response.model_dump(),
         headers={
@@ -73,10 +104,19 @@ async def get_events(
 
 @router.get("/segments")
 async def get_segments(
+    request: Request,
     db: AsyncSession = Depends(get_db),
-) -> JSONResponse:
-    """분석 구간 정의 목록 — ETag + Cache-Control (api_spec_vN §GET /segments)."""
+) -> JSONResponse | Response:
+    """분석 구간 정의 목록 — ETag + Cache-Control + If-None-Match 304 처리.
+
+    feature_spec_BE-REDIS_v2 §1.2 ETag 경로: If-None-Match 일치 시 304 반환.
+    """
     response, etag = await ref_svc.get_segments(db)
+
+    not_modified = _check_etag(request, etag)
+    if not_modified is not None:
+        return not_modified
+
     return JSONResponse(
         content=response.model_dump(),
         headers={
@@ -87,9 +127,12 @@ async def get_segments(
 
 
 @router.get("/meta/pipeline", response_model=MetaPipelineResponse)
-async def get_meta_pipeline() -> MetaPipelineResponse:
-    """파이프라인 플로우 — 정적 데이터 (api_spec_vN §방법론 엔드포인트)."""
-    return MetaPipelineResponse(
+async def get_meta_pipeline(request: Request) -> MetaPipelineResponse | Response:
+    """파이프라인 플로우 — 정적 데이터 + ETag + If-None-Match 304 처리.
+
+    feature_spec_BE-REDIS_v2 §3.3: 코드 내 정적 딕셔너리 기반 ETag, 304 응답.
+    """
+    body = MetaPipelineResponse(
         version=settings.pipeline_spec_version,
         nodes=[
             PipelineNode(id="phase0", label="Phase 0", description="데이터 수집·전처리", phase_number=0),
@@ -118,6 +161,19 @@ async def get_meta_pipeline() -> MetaPipelineResponse:
             PipelineEdge(source="phase7", target="phase8"),
             PipelineEdge(source="phase7_ml", target="phase8"),
         ],
+    )
+
+    etag = _body_etag(body.model_dump(mode="json"))
+    not_modified = _check_etag(request, etag)
+    if not_modified is not None:
+        return not_modified
+
+    return JSONResponse(
+        content=body.model_dump(mode="json"),
+        headers={
+            "ETag": f'"{etag}"',
+            "Cache-Control": _CACHE_CONTROL,
+        },
     )
 
 
@@ -154,9 +210,9 @@ async def trigger_batch() -> BatchTriggerResponse:
 
 
 @router.get("/meta/analysis-params", response_model=MetaAnalysisParamsResponse)
-async def get_meta_analysis_params() -> MetaAnalysisParamsResponse:
-    """파이프라인 파라미터 기준값 — 정적 데이터."""
-    return MetaAnalysisParamsResponse(
+async def get_meta_analysis_params(request: Request) -> MetaAnalysisParamsResponse | Response:
+    """파이프라인 파라미터 기준값 — 정적 데이터 + ETag + If-None-Match 304 처리."""
+    body = MetaAnalysisParamsResponse(
         version=settings.pipeline_spec_version,
         params={
             "rolling_window": 48,
@@ -189,4 +245,17 @@ async def get_meta_analysis_params() -> MetaAnalysisParamsResponse:
                 applicable_segments=["B"],
             ),
         ],
+    )
+
+    etag = _body_etag(body.model_dump(mode="json"))
+    not_modified = _check_etag(request, etag)
+    if not_modified is not None:
+        return not_modified
+
+    return JSONResponse(
+        content=body.model_dump(mode="json"),
+        headers={
+            "ETag": f'"{etag}"',
+            "Cache-Control": _CACHE_CONTROL,
+        },
     )

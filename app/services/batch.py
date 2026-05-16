@@ -239,6 +239,10 @@ async def _execute_phases(
 
         await db.commit()
 
+    # 배치 완료 시 시계열 캐시 전체 무효화 (feature_spec_BE-REDIS_v2 §1.2)
+    if status == "completed":
+        await invalidate_cache(run_id)
+
     logger.info(
         f"배치 {status} 완료 — run_id={run_id}, run_date={run_date}",
         extra={"error_code": "BATCH", "context": {"run_id": run_id, "status": status}},
@@ -295,6 +299,36 @@ async def run_monthly_pipeline(run_date: Optional[date] = None) -> None:
 
 
 # ── APScheduler 인스턴스 팩토리 ───────────────────────────────────────────────
+
+async def invalidate_cache(pipeline_run_id: int) -> None:
+    """배치 완료 후 시계열 캐시 패턴 전체 삭제 (feature_spec_BE-REDIS_v2 §1.2).
+
+    pipeline_runs.status='completed' 이후 호출된다.
+    캐시 삭제 실패 시 DB-CACHE-001 WARN — 서비스 중단 없음.
+    """
+    from app.cache.redis import cache_delete_pattern, get_redis_client
+
+    prefix = settings.redis_cache_prefix
+    client = get_redis_client()
+    patterns = [
+        f"{prefix}:stream:*",
+        f"{prefix}:raw-prices:*",
+        f"{prefix}:stat-series:*",
+    ]
+    for pattern in patterns:
+        count = await cache_delete_pattern(client, pattern)
+        logger.info(
+            f"캐시 무효화 완료 — pattern={pattern}, deleted={count}, run_id={pipeline_run_id}",
+            extra={
+                "error_code": "BATCH",
+                "context": {
+                    "pattern": pattern,
+                    "deleted_count": count,
+                    "pipeline_run_id": pipeline_run_id,
+                },
+            },
+        )
+
 
 def init_scheduler() -> AsyncIOScheduler:
     """APScheduler 인스턴스 생성 + 월별 cron 스케줄 등록.
