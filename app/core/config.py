@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     # 버전 갱신 시 manifest §1을 먼저 업데이트한 뒤 이 값을 변경한다.
     pipeline_spec_version: str = "v10"
 
+    # 배치 스케줄 파라미터 (feature_spec_BE-BATCH_v2 §4 — 하드코딩 금지)
+    batch_schedule_day: int = 15       # 매월 실행일
+    batch_schedule_hour: int = 3       # 실행 시각 (KST)
+    batch_schedule_tz: str = "Asia/Seoul"   # 배치 타임존
+    batch_misfire_grace_sec: int = 3600    # APScheduler misfire grace time (초)
+
     @field_validator("rolling_window")
     @classmethod
     def validate_rolling_window(cls, v: int) -> int:

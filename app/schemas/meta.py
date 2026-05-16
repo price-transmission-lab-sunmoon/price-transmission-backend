@@ -100,3 +100,11 @@ class MetaAnalysisParamsResponse(BaseModel):
     version: str
     params: dict
     patterns: list[PatternInfo]
+
+
+class BatchTriggerResponse(BaseModel):
+    """POST /admin/batch/trigger 202 Accepted 응답 (feature_spec_BE-BATCH_v2 §3.2)."""
+    run_id: int
+    status: Literal["running", "completed", "failed"]
+    run_date: str   # YYYY-MM-DD
+    started_at: str  # ISO 8601 UTC

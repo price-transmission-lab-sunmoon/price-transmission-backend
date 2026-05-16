@@ -1,5 +1,8 @@
-"""/meta/config, /meta/pipeline, /meta/analysis-params, /segments, /events, /freshness 엔드포인트 (api_spec_vN §방법론·설정 엔드포인트)."""
-from fastapi import APIRouter, Depends
+"""/meta/config, /meta/pipeline, /meta/analysis-params, /segments, /events, /freshness,
+/admin/batch/trigger 엔드포인트 (api_spec_vN §방법론·설정 엔드포인트, feature_spec_BE-BATCH_v2 §3.2)."""
+import asyncio
+
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -7,6 +10,7 @@ from app.api.deps import get_db
 from app.cache.redis import ping_redis
 from app.core.config import settings
 from app.schemas.meta import (
+    BatchTriggerResponse,
     MetaAnalysisParamsResponse,
     MetaConfigResponse,
     MetaPipelineResponse,
@@ -114,6 +118,38 @@ async def get_meta_pipeline() -> MetaPipelineResponse:
             PipelineEdge(source="phase7", target="phase8"),
             PipelineEdge(source="phase7_ml", target="phase8"),
         ],
+    )
+
+
+@router.post("/admin/batch/trigger", status_code=202, response_model=BatchTriggerResponse)
+async def trigger_batch() -> BatchTriggerResponse:
+    """개발용 수동 배치 트리거 — 비동기 실행 후 즉시 202 반환 (feature_spec_BE-BATCH_v2 §3.2).
+
+    - pipeline_runs 초기 레코드 생성 후 run_id 즉시 반환
+    - Phase 실행은 백그라운드 asyncio task로 진행 (API-BATCH-001 방침 준수)
+    - 동일 run_date에 실행 중인 배치 존재 시 202 + 기존 run_id 반환 (API-BATCH-002)
+    """
+    from app.services.batch import _execute_phases, start_batch
+
+    resp = await start_batch()
+
+    if not resp.get("skipped"):
+        # Phase 실행을 비동기 백그라운드 태스크로 분리 → 즉시 202 반환
+        from datetime import date
+
+        from app.services.batch import _calc_dates
+
+        run_date = date.fromisoformat(resp["run_date"])
+        data_up_to, next_run_date = _calc_dates(run_date)
+        asyncio.create_task(
+            _execute_phases(resp["run_id"], run_date, data_up_to, next_run_date)
+        )
+
+    return BatchTriggerResponse(
+        run_id=resp["run_id"],
+        status=resp["status"],
+        run_date=resp["run_date"],
+        started_at=resp["started_at"],
     )
 
 
