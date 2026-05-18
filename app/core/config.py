@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     batch_schedule_tz: str = "Asia/Seoul"   # 배치 타임존
     batch_misfire_grace_sec: int = 3600    # APScheduler misfire grace time (초)
 
+    # DB 파이프라인 적재 파라미터 (feature_spec_DB-PIPELINE_v2 §4 — 하드코딩 금지)
+    # frame_spec_backend_vN §4 미등록 신규 키 — PM 승인 후 추가 (§9 참조)
+    pipeline_data_root: str = "data/processed"  # 파이프라인 출력 루트 디렉토리
+    db_pool_size: int = 10                        # DB 커넥션 풀 크기 (frame_spec §5 pool_size=10 정합)
+
     @field_validator("rolling_window")
     @classmethod
     def validate_rolling_window(cls, v: int) -> int:

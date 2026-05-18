@@ -1,0 +1,38 @@
+{
+  "commodity_id": "wheat",
+  "segment": "D_prime",
+  "borderline_cointegration": false,
+  "bai_perron_breakpoints": ["2013-05", "2020-11"],
+  "bai_perron_best_k": 2,
+  "bic_scores": {
+    "0": -62.9,
+    "1": -67.57,
+    "2": -362.49,
+    "3": -350.52
+  },
+  "chow_test_points": {
+    "2008-01": {
+      "break_point": "2008-01",
+      "f_stat": 7.3014,
+      "pvalue": 0.0008,
+      "significant": true
+    },
+    "2020-01": {
+      "break_point": "2020-01",
+      "f_stat": 103.4496,
+      "pvalue": 0.0,
+      "significant": true
+    },
+    "2022-01": {
+      "break_point": "2022-01",
+      "f_stat": 96.2219,
+      "pvalue": 0.0,
+      "significant": true
+    }
+  },
+  "subperiods": [
+    {"id": 1, "start": "2000-01", "end": "2013-04", "n_obs": 160},
+    {"id": 2, "start": "2013-05", "end": "2020-10", "n_obs": 90},
+    {"id": 3, "start": "2020-11", "end": "2026-02", "n_obs": 64}
+  ]
+}
