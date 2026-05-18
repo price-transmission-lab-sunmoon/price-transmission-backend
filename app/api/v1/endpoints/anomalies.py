@@ -8,8 +8,9 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_redis
+from app.api.deps import get_db, get_redis
 from app.cache.redis import cache_delete, cache_get, cache_set
 from app.core.config import settings
 from app.core.exceptions import APIError
@@ -76,11 +77,12 @@ async def get_anomaly_detail(
 @router.get("/anomalies/{anomaly_id}/stat-series", response_model=StatSeriesResponse)
 async def get_stat_series(
     anomaly_id: int,
-    metric: Annotated[_STAT_SERIES_METRICS, Query(description="지표 종류")] = "transmission_rate",
+    metric: Annotated[_StatSeriesMetric, Query(description="지표 종류")] = "transmission_rate",
     from_: Annotated[str | None, Query(alias="from", description="조회 시작 월 (YYYY-MM)")] = None,
     to: Annotated[str | None, Query(description="조회 종료 월 (YYYY-MM)")] = None,
     granularity: Annotated[str, Query(description="집계 단위 (monthly/quarterly/yearly)")] = "monthly",
     redis: aioredis.Redis = Depends(get_redis),
+    db: AsyncSession = Depends(get_db),
 ) -> StatSeriesResponse:
     """지표별 인라인 시계열 — Redis TTL 캐싱 적용 (feature_spec_BE-REDIS_v2 §3.3).
 
@@ -124,14 +126,7 @@ async def get_stat_series(
         "cache=miss",
         extra={"error_code": "CACHE", "context": {"cache_key": cache_key}},
     )
-    result = StatSeriesResponse(
-        anomaly_id=anomaly_id,
-        metric=metric,
-        from_str=from_,
-        to_str=to,
-        granularity=granularity,
-        session=db,
-    )
+    result = await anomaly_panel.get_stat_series(anomaly_id, metric, from_, to, granularity, db)
     await cache_set(redis, cache_key, result.model_dump(mode="json"), ttl=settings.redis_ttl)
     return result
 
