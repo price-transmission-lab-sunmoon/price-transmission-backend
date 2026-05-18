@@ -17,9 +17,10 @@ from app.schemas.panel import (
 from app.schemas.timeseries import StatSeriesResponse
 
 _NOT_IMPLEMENTED = APIError(
-    status_code=501,
-    error_code="API-INT-NOT-IMPLEMENTED",
+    code="API-INT-NOT-IMPLEMENTED",
     message="패널 엔드포인트는 feat/phase7-stat 이후 구현 예정입니다.",
+    http_status=501,
+    public_code="NOT_IMPLEMENTED",
 )
 
 

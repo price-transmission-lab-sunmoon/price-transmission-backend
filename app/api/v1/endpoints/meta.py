@@ -15,6 +15,9 @@ from app.schemas.meta import (
     MetaAnalysisParamsResponse,
     MetaConfigResponse,
     MetaPipelineResponse,
+    PatternInfo,
+    PipelineEdge,
+    PipelineNode,
 )
 from app.services import reference as ref_svc
 
@@ -65,7 +68,7 @@ async def get_meta_config() -> MetaConfigResponse:
     )
 
 
-@router.get("/freshness")
+@router.get("/freshness", response_model=None)
 async def get_freshness(
     db: AsyncSession = Depends(get_db),
 ) -> JSONResponse:
@@ -74,7 +77,7 @@ async def get_freshness(
     return JSONResponse(content=response.model_dump())
 
 
-@router.get("/events")
+@router.get("/events", response_model=None)
 async def get_events(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -92,11 +95,11 @@ async def get_events(
 
     return JSONResponse(
         content=response.model_dump(),
-        headers={"ETag": etag_header, "Cache-Control": _CACHE_CONTROL},
+        headers={"ETag": f'"{etag}"', "Cache-Control": _CACHE_CONTROL},
     )
 
 
-@router.get("/segments")
+@router.get("/segments", response_model=None)
 async def get_segments(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -113,7 +116,7 @@ async def get_segments(
 
     return JSONResponse(
         content=response.model_dump(),
-        headers={"ETag": etag_header, "Cache-Control": _CACHE_CONTROL},
+        headers={"ETag": f'"{etag}"', "Cache-Control": _CACHE_CONTROL},
     )
 
 

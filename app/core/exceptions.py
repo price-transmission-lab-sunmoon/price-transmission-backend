@@ -143,7 +143,7 @@ async def api_error_handler(request: Request, exc: APIError) -> JSONResponse:
     )
     return JSONResponse(
         status_code=exc.http_status,
-        content=_error_body(exc.public_code, exc.message),
+        content=_error_body(exc.public_code, exc.message, exc.context or None),
     )
 
 

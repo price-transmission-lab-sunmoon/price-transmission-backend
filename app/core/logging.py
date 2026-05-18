@@ -1,7 +1,9 @@
 """구조화 JSON 로깅 초기화 — exception_spec_vN §부록 A 예시 형식."""
+import io
 import json
 import logging
 import logging.config
+import sys
 from datetime import UTC, datetime
 
 
@@ -22,29 +24,22 @@ class _JsonFormatter(logging.Formatter):
 
 
 def setup_logging(log_level: str = "INFO") -> None:
-    config = {
-        "version": 1,
-        "disable_existing_loggers": False,
-        "formatters": {
-            "json": {
-                "()": _JsonFormatter,
-            },
-        },
-        "handlers": {
-            "console": {
-                "class": "logging.StreamHandler",
-                "formatter": "json",
-                "stream": "ext://sys.stdout",
-            },
-        },
-        "root": {
-            "level": log_level,
-            "handlers": ["console"],
-        },
-        "loggers": {
-            "app": {"level": log_level, "handlers": ["console"], "propagate": False},
-            "uvicorn": {"level": "INFO", "handlers": ["console"], "propagate": False},
-            "sqlalchemy.engine": {"level": "WARNING", "handlers": ["console"], "propagate": False},
-        },
-    }
-    logging.config.dictConfig(config)
+    # Windows cp949 터미널에서 한글·특수문자(em dash 등) 출력 시 UnicodeEncodeError 방지
+    utf8_stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True)
+
+    handler = logging.StreamHandler(utf8_stdout)
+    handler.setFormatter(_JsonFormatter())
+
+    root = logging.getLogger()
+    root.setLevel(log_level)
+    root.handlers = [handler]
+
+    for name, level in [
+        ("app", log_level),
+        ("uvicorn", "INFO"),
+        ("sqlalchemy.engine", "WARNING"),
+    ]:
+        logger = logging.getLogger(name)
+        logger.setLevel(level)
+        logger.handlers = [handler]
+        logger.propagate = False

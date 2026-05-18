@@ -10,6 +10,7 @@ from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from app.cache.redis import cache_delete_pattern, get_redis_client
 from app.core.config import settings
 from app.core.exceptions import DBError
 from app.db.models.batch import DataFreshness, PipelineRun  # noqa: F401
@@ -306,8 +307,6 @@ async def invalidate_cache(pipeline_run_id: int) -> None:
     pipeline_runs.status='completed' 이후 호출된다.
     캐시 삭제 실패 시 DB-CACHE-001 WARN — 서비스 중단 없음.
     """
-    from app.cache.redis import cache_delete_pattern, get_redis_client
-
     prefix = settings.redis_cache_prefix
     client = get_redis_client()
     patterns = [
