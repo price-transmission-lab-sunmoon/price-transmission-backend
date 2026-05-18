@@ -160,29 +160,33 @@ async def upsert_data_freshness(
     """data_freshness 테이블 — 항상 최신 1개 행 유지 UPSERT.
 
     feature_spec_DB-PIPELINE_v2 §3.2: Phase 전체 완료 후 갱신.
+
+    UPDATE 우선 실행 → rowcount=0(행 없음)이면 INSERT.
+    data_freshness는 PK 외 별도 UNIQUE 제약이 없으므로
+    INSERT-ON CONFLICT 패턴은 중복 행을 방지할 수 없다.
     """
-    await session.execute(
-        text(
-            """
-            INSERT INTO data_freshness (data_up_to, next_run_date, last_updated, pipeline_run_id)
-            VALUES (:data_up_to, :next_run_date, now(), :run_id)
-            ON CONFLICT DO NOTHING
-            """
-        ),
-        {"data_up_to": data_up_to, "next_run_date": next_run_date, "run_id": run_id},
-    )
-    # 기존 행이 있으면 UPDATE
-    await session.execute(
+    result = await session.execute(
         text(
             """
             UPDATE data_freshness
-            SET data_up_to = :data_up_to,
-                next_run_date = :next_run_date,
-                last_updated = now(),
+            SET data_up_to      = :data_up_to,
+                next_run_date   = :next_run_date,
+                last_updated    = now(),
                 pipeline_run_id = :run_id
             WHERE id = (SELECT id FROM data_freshness ORDER BY id LIMIT 1)
             """
         ),
         {"data_up_to": data_up_to, "next_run_date": next_run_date, "run_id": run_id},
     )
+    if result.rowcount == 0:
+        # 행이 없을 때만 INSERT (최초 실행)
+        await session.execute(
+            text(
+                """
+                INSERT INTO data_freshness (data_up_to, next_run_date, last_updated, pipeline_run_id)
+                VALUES (:data_up_to, :next_run_date, now(), :run_id)
+                """
+            ),
+            {"data_up_to": data_up_to, "next_run_date": next_run_date, "run_id": run_id},
+        )
     await session.commit()

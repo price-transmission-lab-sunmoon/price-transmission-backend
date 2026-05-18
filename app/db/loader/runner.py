@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import DBError
 from app.db.loader.base import (
+    append_phase_to_run,
     create_pipeline_run,
     update_pipeline_run_status,
     upsert_data_freshness,
@@ -59,48 +60,77 @@ async def run_pipeline(
 
     results: dict = {"run_id": run_id, "phases": {}}
 
+    def _completed_phases() -> list[str]:
+        """현재까지 완료된 Phase 번호 목록 (D-17 재시작 기준)."""
+        return [str(p) for p in sorted(results["phases"].keys(), key=int)]
+
     # ── Phase 2 ───────────────────────────────────────────────────────────────
     try:
         rows = await load_stationarity_results(session, run_id)
         results["phases"]["2"] = {"stationarity_results": rows}
+        await append_phase_to_run(session, run_id, "2")
     except DBError as exc:
-        await update_pipeline_run_status(session, run_id, "failed", error_message=str(exc))
+        await update_pipeline_run_status(
+            session, run_id, "failed",
+            phases_run=_completed_phases() or None,
+            error_message=str(exc),
+        )
         raise
 
     # ── Phase 3 ───────────────────────────────────────────────────────────────
     try:
         rows = await load_cointegration_results(session, run_id)
         results["phases"]["3"] = {"cointegration_results": rows}
+        await append_phase_to_run(session, run_id, "3")
     except DBError as exc:
-        await update_pipeline_run_status(session, run_id, "failed", error_message=str(exc))
+        await update_pipeline_run_status(
+            session, run_id, "failed",
+            phases_run=_completed_phases() or None,
+            error_message=str(exc),
+        )
         raise
 
     # ── Phase 4 ───────────────────────────────────────────────────────────────
     try:
         counts = await load_phase4(session, run_id)
         results["phases"]["4"] = counts
+        await append_phase_to_run(session, run_id, "4")
     except DBError as exc:
-        await update_pipeline_run_status(session, run_id, "failed", error_message=str(exc))
+        await update_pipeline_run_status(
+            session, run_id, "failed",
+            phases_run=_completed_phases() or None,
+            error_message=str(exc),
+        )
         raise
 
     # ── Phase 5 ───────────────────────────────────────────────────────────────
     try:
         rows = await load_granger_results(session, run_id)
         results["phases"]["5"] = {"granger_results": rows}
+        await append_phase_to_run(session, run_id, "5")
     except DBError as exc:
-        await update_pipeline_run_status(session, run_id, "failed", error_message=str(exc))
+        await update_pipeline_run_status(
+            session, run_id, "failed",
+            phases_run=_completed_phases() or None,
+            error_message=str(exc),
+        )
         raise
 
     # ── Phase 6 ───────────────────────────────────────────────────────────────
     try:
         counts = await load_phase6(session, run_id)
         results["phases"]["6"] = counts
+        await append_phase_to_run(session, run_id, "6")
     except DBError as exc:
-        await update_pipeline_run_status(session, run_id, "failed", error_message=str(exc))
+        await update_pipeline_run_status(
+            session, run_id, "failed",
+            phases_run=_completed_phases() or None,
+            error_message=str(exc),
+        )
         raise
 
     # ── 완료 기록 ─────────────────────────────────────────────────────────────
-    phases_run = [str(p) for p in sorted(results["phases"].keys(), key=int)]
+    phases_run = _completed_phases()
     await update_pipeline_run_status(session, run_id, "completed", phases_run=phases_run)
     await upsert_data_freshness(session, run_id, data_up_to, next_run_date)
 
