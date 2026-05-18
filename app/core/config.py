@@ -21,7 +21,14 @@ class Settings(BaseSettings):
     # 파이프라인 파라미터 (pipeline_output_spec_vN §파라미터 표, CFG-CORE-003)
     rolling_window: int = 48
     contamination: float = 0.10
+    contamination_range: list[float] = [0.05, 0.10, 0.15]
     random_state: int = 42
+    zscore_warning: float = 2.0
+    zscore_alert: float = 2.5
+
+    # 이상 탐지 임계값 (feature_spec_API-PANEL §4 — 하드코딩 금지)
+    zscore_warning: float = 2.0   # Z-score 주의 임계값
+    zscore_alert: float = 2.5     # Z-score 경보 임계값
 
     frame_version: str = "0.1.0"
 
@@ -52,6 +59,13 @@ class Settings(BaseSettings):
     def validate_contamination(cls, v: float) -> float:
         if not 0 < v < 1:
             raise ValueError("CONTAMINATION은 0 초과 1 미만이어야 합니다.")
+        return v
+
+    @field_validator("zscore_warning", "zscore_alert")
+    @classmethod
+    def validate_zscore(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("ZSCORE 임계값은 양수여야 합니다.")
         return v
 
 

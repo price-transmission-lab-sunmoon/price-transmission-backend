@@ -1,0 +1,30 @@
+{
+  "version": "v8",
+  "nodes": [
+    { "id": "phase0",     "label": "Phase 0",    "description": "데이터 수집·전처리",   "phase_number": 0 },
+    { "id": "phase1",     "label": "Phase 1",    "description": "계절 조정 (STL)",      "phase_number": 1 },
+    { "id": "phase2",     "label": "Phase 2",    "description": "정상성 검정",           "phase_number": 2 },
+    { "id": "phase3",     "label": "Phase 3",    "description": "공적분 검정",           "phase_number": 3 },
+    { "id": "phase4_vecm","label": "VECM 추정",  "description": "장기 균형 포함 모형",  "phase_number": 4 },
+    { "id": "phase4_var", "label": "VAR 추정",   "description": "단기 동적 모형",       "phase_number": 4 },
+    { "id": "phase5",     "label": "Phase 5",    "description": "Granger 인과 검정",    "phase_number": 5 },
+    { "id": "phase6",     "label": "Phase 6",    "description": "구조 변화 탐지",       "phase_number": 6 },
+    { "id": "phase7",     "label": "Phase 7",    "description": "통계 기반 이상 탐지",  "phase_number": 7 },
+    { "id": "phase7_ml",  "label": "Phase 7-ML", "description": "ML 보조 교차검증",     "phase_number": 7.5 },
+    { "id": "phase8",     "label": "Phase 8",    "description": "결과 종합·등급화",     "phase_number": 8 }
+  ],
+  "edges": [
+    { "source": "phase0",      "target": "phase1",     "label": null },
+    { "source": "phase1",      "target": "phase2",     "label": null },
+    { "source": "phase2",      "target": "phase3",     "label": null },
+    { "source": "phase3",      "target": "phase4_vecm","label": "공적분 있음" },
+    { "source": "phase3",      "target": "phase4_var", "label": "공적분 없음" },
+    { "source": "phase4_vecm", "target": "phase5",     "label": null },
+    { "source": "phase4_var",  "target": "phase5",     "label": null },
+    { "source": "phase5",      "target": "phase6",     "label": null },
+    { "source": "phase6",      "target": "phase7",     "label": null },
+    { "source": "phase6",      "target": "phase7_ml",  "label": null },
+    { "source": "phase7",      "target": "phase8",     "label": null },
+    { "source": "phase7_ml",   "target": "phase8",     "label": null }
+  ]
+}

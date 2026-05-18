@@ -51,8 +51,8 @@ class StatMetrics(BaseModel):
     zscore: float | None = None
     zscore_warning: bool = False
     zscore_alert: bool = False
-    zscore_threshold_warning: float = 2.0
-    zscore_threshold_alert: float = 2.5
+    zscore_threshold_warning: float  # settings.zscore_warning — 서비스 레이어에서 주입
+    zscore_threshold_alert: float    # settings.zscore_alert  — 서비스 레이어에서 주입
     q1: float | None = None
     q3: float | None = None
     iqr_lower: float | None = None

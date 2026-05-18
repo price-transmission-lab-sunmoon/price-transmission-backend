@@ -96,9 +96,22 @@ class PatternInfo(BaseModel):
     applicable_segments: list[str]
 
 
+class AnalysisParams(BaseModel):
+    """GET /meta/analysis-params 응답 내 params 객체 (api_spec_v5 §/meta/analysis-params)."""
+    rolling_window: int
+    zscore_warning: float
+    zscore_alert: float
+    iqr_multiplier: float
+    stability_threshold: float
+    pattern3_n_values: list[int]
+    min_subperiod_obs: int
+    lag_search_range: list[int]
+    chow_test_points: list[str]    # YYYY-MM
+
+
 class MetaAnalysisParamsResponse(BaseModel):
     version: str
-    params: dict
+    params: AnalysisParams
     patterns: list[PatternInfo]
 
 
