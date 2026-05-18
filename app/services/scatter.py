@@ -80,7 +80,7 @@ async def get_scatter(
                     "commodity_id": commodity_id,
                 },
                 http_status=400,
-                public_code="INVALID_DATE_RANGE",
+                public_code="UNTIL_EXCEEDS_TO",
             )
 
     # 4. stat_timeseries 조회 (upstream_pct, downstream_pct)
