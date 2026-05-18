@@ -1,4 +1,4 @@
-"""ORM 모델 — stat_timeseries, raw_prices (db_schema_vN §탐지/원시가격 테이블)."""
+"""ORM 모델 — stat_timeseries, raw_prices, mv_anomaly_density_yearly (db_schema_vN §탐지/원시가격/집계뷰 테이블)."""
 from sqlalchemy import (
     TIMESTAMP,
     Boolean,
@@ -8,6 +8,7 @@ from sqlalchemy import (
     Index,
     Integer,
     Numeric,
+    SmallInteger,
     String,
     UniqueConstraint,
     text,
@@ -96,4 +97,23 @@ class RawPrice(Base):
     __table_args__ = (
         UniqueConstraint("commodity_id", "period", name="uq_raw_prices_commodity_period"),
         Index("idx_raw_prices_commodity_period", "commodity_id", "period"),
+    )
+
+
+class MvAnomalyDensityYearly(Base):
+    """db_schema_vN §mv_anomaly_density_yearly — 연도별 이상 밀도 머티리얼라이즈드 뷰.
+
+    읽기 전용. 복합 PK (id 없음). REFRESH MATERIALIZED VIEW 로 갱신.
+    """
+    __tablename__ = "mv_anomaly_density_yearly"
+
+    commodity_id = Column(String(20), primary_key=True)
+    segment_id = Column(String(10), primary_key=True)
+    year = Column(SmallInteger, primary_key=True)
+    high_count = Column(Integer, nullable=False, default=0)
+    medium_count = Column(Integer, nullable=False, default=0)
+    reference_count = Column(Integer, nullable=False, default=0)
+
+    __table_args__ = (
+        Index("idx_mv_anomaly_density", "commodity_id", "segment_id", "year"),
     )
