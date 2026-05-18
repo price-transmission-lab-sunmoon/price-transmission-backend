@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     zscore_warning: float = 2.0
     zscore_alert: float = 2.5
 
+    # 이상 탐지 임계값 (feature_spec_API-PANEL §4 — 하드코딩 금지)
+    zscore_warning: float = 2.0   # Z-score 주의 임계값
+    zscore_alert: float = 2.5     # Z-score 경보 임계값
+
     frame_version: str = "0.1.0"
 
     # doc1_technical_pipeline 현재 버전 (docs/docs_manifest.md §1 표와 일치해야 함)
