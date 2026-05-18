@@ -1,5 +1,5 @@
 """/meta/config, /meta/pipeline, /meta/analysis-params, /segments, /events, /freshness 엔드포인트 (api_spec_vN §방법론·설정 엔드포인트)."""
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -54,31 +54,33 @@ async def get_freshness(
 
 @router.get("/events")
 async def get_events(
+    request: Request,
     db: AsyncSession = Depends(get_db),
-) -> JSONResponse:
-    """외부 충격 이벤트 목록 — ETag + Cache-Control (api_spec_vN §GET /events)."""
+) -> Response:
+    """외부 충격 이벤트 목록 — ETag + Cache-Control + 304 (api_spec_vN §GET /events, feature_spec_API-REF_v4 §6)."""
     response, etag = await ref_svc.get_events(db)
+    etag_header = f'"{etag}"'
+    if request.headers.get("if-none-match") == etag_header:
+        return Response(status_code=304, headers={"ETag": etag_header, "Cache-Control": _CACHE_CONTROL})
     return JSONResponse(
         content=response.model_dump(),
-        headers={
-            "ETag": f'"{etag}"',
-            "Cache-Control": _CACHE_CONTROL,
-        },
+        headers={"ETag": etag_header, "Cache-Control": _CACHE_CONTROL},
     )
 
 
 @router.get("/segments")
 async def get_segments(
+    request: Request,
     db: AsyncSession = Depends(get_db),
-) -> JSONResponse:
-    """분석 구간 정의 목록 — ETag + Cache-Control (api_spec_vN §GET /segments)."""
+) -> Response:
+    """분석 구간 정의 목록 — ETag + Cache-Control + 304 (api_spec_vN §GET /segments, feature_spec_API-REF_v4 §6)."""
     response, etag = await ref_svc.get_segments(db)
+    etag_header = f'"{etag}"'
+    if request.headers.get("if-none-match") == etag_header:
+        return Response(status_code=304, headers={"ETag": etag_header, "Cache-Control": _CACHE_CONTROL})
     return JSONResponse(
         content=response.model_dump(),
-        headers={
-            "ETag": f'"{etag}"',
-            "Cache-Control": _CACHE_CONTROL,
-        },
+        headers={"ETag": etag_header, "Cache-Control": _CACHE_CONTROL},
     )
 
 
