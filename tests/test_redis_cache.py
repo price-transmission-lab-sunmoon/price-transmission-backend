@@ -89,7 +89,7 @@ async def test_cache_set_stores_json():
     assert call_args[0][0] == "test:key"
     stored = json.loads(call_args[0][1])
     assert stored == payload
-    assert call_args[1].get("ex") == 3600 or call_args[0][2:] or True  # TTL 전달 확인
+    assert call_args[1].get("ex") == 3600  # TTL이 키워드 인자 ex=3600 으로 전달되는지 검증
 
 
 @pytest.mark.asyncio

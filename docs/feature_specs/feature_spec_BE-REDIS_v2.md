@@ -1,4 +1,4 @@
-# Feature 명세서 — Redis 캐싱 적용
+﻿# Feature 명세서 — Redis 캐싱 적용
 
 **문서 유형**: Feature 명세서
 **기능 번호**: `API-REDIS`
@@ -9,7 +9,8 @@
 
 **변경 이력**:
 - v1 (2026-05-09): 최초 작성.
-- v2 (2026-05-11): 참조 문서 오류 수정. §0 `exception_design_v3.md`→`exception_design_vN.md` (vN 형식 통일). §1.2 캐시 무효\ud654 패턴에 `{REDIS_CACHE_PREFIX}` 프리\ud53d스 추\uac00 (§3.3 키 정의와 일치). §1.2·§3.3 경로 파라미터 `{id}`→`{commodity_id}`/`{anomaly_id}` (`api_spec_v5` 기준). §6 wheat (4구간)→(3구간), banana (3구간)→(4구간) (`db_schema_v5` 기준). PR 템플릿 파일\uba85 `feature_spec_API-REDIS_v1.md`→`feature_spec_BE-REDIS_v2.md`.
+- v2 (2026-05-11): 참조 문서 오류 수정. §0 exception_design_v3.md→exception_design_vN.md (vN 형식 통일). §1.2 캐시 무효화 패턴에 {REDIS_CACHE_PREFIX} 프리픽스 추가 (§3.3 키 정의와 일치). §1.2·§3.3 경로 파라미터 {id}→{commodity_id}/{anomaly_id} (pi_spec_v5 기준). §6 wheat (4구간)→(3구간), banana (3구간)→(4구간) (db_schema_v5 기준). PR 템플릿 파일명 eature_spec_API-REDIS_v1.md→eature_spec_BE-REDIS_v2.md.
+- v2.1 (2026-05-18): §3.3 /stat-series 캐시 키 패턴에 {metric} 추가 (결과 명세 API-REDIS.md §4와 일치, metric별 데이터 상이).
 
 ---
 
@@ -127,7 +128,7 @@
 |------------|-----------|-------------|------|
 | `GET /api/v1/commodities/{commodity_id}/stream` | Redis TTL | `{REDIS_CACHE_PREFIX}:stream:{commodity_id}:{segment_id}:{from}:{to}:{granularity}` | MISS 시 DB 조회 후 캐시 적재 |
 | `GET /api/v1/commodities/{commodity_id}/raw-prices` | Redis TTL | `{REDIS_CACHE_PREFIX}:raw-prices:{commodity_id}:{segment_id}:{from}:{to}:{granularity}:{layout}` | MISS 시 DB 조회 후 캐시 적재 |
-| `GET /api/v1/anomalies/{anomaly_id}/stat-series` | Redis TTL | `{REDIS_CACHE_PREFIX}:stat-series:{anomaly_id}:{from}:{to}:{granularity}` | MISS 시 DB 조회 후 캐시 적재 |
+| `GET /api/v1/anomalies/{anomaly_id}/stat-series` | Redis TTL | `{REDIS_CACHE_PREFIX}:stat-series:{anomaly_id}:{metric}:{from}:{to}:{granularity}` | MISS 시 DB 조회 후 캐시 적재 |
 | `GET /api/v1/meta/pipeline` | ETag 조건부 | — | 코드 내 정적 딕셔너리 기반 ETag, 304 응답 |
 | `GET /api/v1/meta/analysis-params` | ETag 조건부 | — | 동일 |
 | `GET /api/v1/segments` | ETag 조건부 | — | 동일 |
