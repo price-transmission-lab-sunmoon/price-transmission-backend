@@ -13,6 +13,7 @@ from app.schemas.anomaly import (
     AnomalyDetailResponse,
     AnomalySummaryResponse,
 )
+from app.services.anomaly_summary import get_anomaly_summary as _get_anomaly_summary
 from app.schemas.panel import (
     IRFResponse,
     MLMapResponse,
@@ -32,15 +33,25 @@ _StatSeriesMetric = Literal[
 
 
 @router.get("/anomalies/summary", response_model=AnomalySummaryResponse)
-async def get_anomaly_summary() -> AnomalySummaryResponse:
-    """이달의 이상 요약 배너 — feat/be-api-anomaly 브랜치에서 실 DB 연결 예정."""
-    return AnomalySummaryResponse(
-        reference_month="2026-03",
-        total_count=0,
-        prev_month_count=0,
-        count_diff=0,
-        anomalies=[],
-    )
+async def get_anomaly_summary(
+    grade: Annotated[
+        str,
+        Query(description="신뢰도 등급 필터. 콤마 구분 복수 지정 (high, medium, reference)"),
+    ] = "high,medium",
+    month: Annotated[
+        str | None,
+        Query(
+            description="기준 월 (YYYY-MM). 미지정 시 data_freshness 최신 기준 월 사용",
+            pattern=r"^\d{4}-\d{2}$",
+        ),
+    ] = None,
+) -> AnomalySummaryResponse:
+    """이달의 이상 요약 배너 — feature_spec_API-ANO_v7 §1.
+
+    더미 단계: grade·month 파라미터 검증 후 고정값 반환.
+    실제 연동: feat/phase7-stat 완료 후 서비스 로직 전환.
+    """
+    return await _get_anomaly_summary(month=month, grade_str=grade)
 
 
 @router.get("/anomalies/{anomaly_id}/detail", response_model=AnomalyDetailResponse)
