@@ -10,7 +10,7 @@ APP_ENV=development + 이 픽스처로 로컬 실행 시 배치 전체 흐름(AP
 from __future__ import annotations
 
 import logging
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -27,7 +27,7 @@ async def dummy_run_phase(phase: str, run_id: int) -> None:
     )
 
 
-async def dummy_run_phase_fail_at(fail_phase: str):
+def dummy_run_phase_fail_at(fail_phase: str):
     """특정 Phase에서 의도적으로 실패하는 더미 팩토리 (실패 시나리오 테스트용)."""
     async def _phase_runner(phase: str, run_id: int) -> None:
         if phase == fail_phase:
@@ -46,15 +46,5 @@ def mock_batch_phases():
 @pytest.fixture()
 def mock_batch_phases_fail_at_phase7():
     """Phase 7에서 의도적 실패 유발 fixture (API-BATCH-001 시나리오)."""
-    fail_runner = None
-
-    async def _setup():
-        nonlocal fail_runner
-        fail_runner = await dummy_run_phase_fail_at("7")
-        return fail_runner
-
-    import asyncio
-    fail_runner = asyncio.get_event_loop().run_until_complete(_setup())
-
-    with patch("app.services.batch._run_phase", side_effect=fail_runner):
+    with patch("app.services.batch._run_phase", side_effect=dummy_run_phase_fail_at("7")):
         yield
