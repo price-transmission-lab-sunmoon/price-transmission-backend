@@ -92,10 +92,7 @@ async def get_events(
 
     return JSONResponse(
         content=response.model_dump(),
-        headers={
-            "ETag": f'"{etag}"',
-            "Cache-Control": _CACHE_CONTROL,
-        },
+        headers={"ETag": etag_header, "Cache-Control": _CACHE_CONTROL},
     )
 
 
@@ -116,10 +113,7 @@ async def get_segments(
 
     return JSONResponse(
         content=response.model_dump(),
-        headers={
-            "ETag": f'"{etag}"',
-            "Cache-Control": _CACHE_CONTROL,
-        },
+        headers={"ETag": etag_header, "Cache-Control": _CACHE_CONTROL},
     )
 
 
