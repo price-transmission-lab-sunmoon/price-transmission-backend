@@ -1,15 +1,21 @@
-"""서비스 레이어 — /anomalies/{id}/detail·stat-series·stat-snapshot·irf·ml-map
-(feature_spec_API-PANEL §1.3 anomaly_panel.py 확정명).
+"""비즈니스 로직 — 분석 수치 패널 5개 엔드포인트 (feature_spec_API-PANEL_vN §1.3).
+
+GET /anomalies/{id}/detail        — 다중 테이블 조인·judgment_path 생성
+GET /anomalies/{id}/stat-series   — metric 4종 시계열
+GET /anomalies/{id}/stat-snapshot — iqr·asymmetry 스냅샷
+GET /anomalies/{id}/irf           — 전체+하위기간 IRF 곡선
+GET /anomalies/{id}/ml-map        — model 파라미터 분기 투영 데이터
 """
 from __future__ import annotations
 
+import logging
 from datetime import date
-from typing import Literal
+from itertools import groupby
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
+from app.core.config import Settings
 from app.core.exceptions import APIError
 from app.db.models.anomaly import (
     AnomalyResult,
@@ -41,23 +47,48 @@ from app.schemas.panel import (
 )
 from app.schemas.timeseries import StatSeriesPoint, StatSeriesResponse
 
+logger = logging.getLogger("app")
 
-# ── 내부 헬퍼 ────────────────────────────────────────────────────────────────
+# ── metric 허용값 ─────────────────────────────────────────────────────────────
+_SERIES_METRICS = {"transmission_rate", "zscore", "ect", "breakpoints"}
+_SNAPSHOT_METRICS = {"iqr", "asymmetry"}
+_SNAPSHOT_ONLY = {"iqr", "asymmetry"}  # stat-series에 요청 시 SNAPSHOT_METRIC_ON_SERIES
+
+
+# ── 유틸리티 ──────────────────────────────────────────────────────────────────
+
+def _parse_yyyymm(s: str) -> date:
+    """'YYYY-MM' → date(year, month, 1)."""
+    try:
+        year, month = s.split("-")
+        return date(int(year), int(month), 1)
+    except (ValueError, TypeError) as e:
+        raise APIError(
+            "API-VAL-001",
+            f"날짜 형식이 올바르지 않습니다 (YYYY-MM 필요): {s!r}",
+            context={"value": s},
+            http_status=400,
+            public_code="API-VAL-001",
+        ) from e
+
+
+def _to_float(v: object) -> float | None:
+    return float(v) if v is not None else None
+
 
 def _to_yyyymm(d: date | None) -> str | None:
     return d.strftime("%Y-%m") if d else None
 
 
-def _parse_yyyymm(s: str) -> date:
-    """YYYY-MM → YYYY-MM-01 date 변환."""
-    year, month = int(s[:4]), int(s[5:7])
-    return date(year, month, 1)
+# ── 공통 조회 헬퍼 ─────────────────────────────────────────────────────────────
 
-
-async def _fetch_anomaly(anomaly_id: int, session: AsyncSession) -> AnomalyResult:
-    """anomaly_results 조회. 미존재 시 API-ANO-001 (404)."""
-    row = await session.get(AnomalyResult, anomaly_id)
-    if row is None:
+async def _get_anomaly_and_segment(
+    db: AsyncSession,
+    anomaly_id: int,
+) -> tuple[AnomalyResult, Segment]:
+    """anomaly 조회 + segment 검증. API-ANO-001 / API-SEG-001 발생."""
+    anomaly = await db.get(AnomalyResult, anomaly_id)
+    if not anomaly:
         raise APIError(
             "API-ANO-001",
             "요청한 이상 탐지 결과를 찾을 수 없습니다.",
@@ -65,704 +96,881 @@ async def _fetch_anomaly(anomaly_id: int, session: AsyncSession) -> AnomalyResul
             http_status=404,
             public_code="ANOMALY_NOT_FOUND",
         )
-    return row
 
-
-async def _fetch_stat_ts(
-    commodity_id: str,
-    segment_id: str,
-    period: date,
-    session: AsyncSession,
-) -> StatTimeseries:
-    """해당 월 stat_timeseries 조회. 미존재 시 API-ANO-002 (500)."""
-    result = await session.execute(
-        select(StatTimeseries).where(
-            StatTimeseries.commodity_id == commodity_id,
-            StatTimeseries.segment_id == segment_id,
-            StatTimeseries.period == period,
+    segment = (
+        await db.execute(
+            select(Segment).where(Segment.segment_id == anomaly.segment_id)
         )
-    )
-    row = result.scalar_one_or_none()
-    if row is None:
+    ).scalar_one_or_none()
+
+    if not segment:
         raise APIError(
-            "API-ANO-002",
-            "파이프라인 통계 데이터가 누락되었습니다.",
-            context={"commodity_id": commodity_id, "segment_id": segment_id, "period": str(period)},
-            http_status=500,
-            public_code="PIPELINE_DATA_MISSING",
+            "API-SEG-001",
+            "이상 탐지 결과가 참조하는 구간이 유효하지 않습니다.",
+            context={"anomaly_id": anomaly_id, "segment_id": anomaly.segment_id},
+            http_status=400,
+            public_code="INVALID_SEGMENT",
         )
-    return row
+
+    return anomaly, segment
 
 
-# ── judgment_path 생성 (api_spec_vN §패널 엔드포인트 D-04 템플릿) ───────────
-
-def _ml_step(anomaly: AnomalyResult) -> JudgmentStep:
-    parts = []
-    for label, flag in [("IF", anomaly.if_anomaly), ("LOF", anomaly.lof_anomaly), ("SVM", anomaly.svm_anomaly)]:
-        parts.append(f"{label} {'✓' if flag else '✗'}")
-    return JudgmentStep(
-        step=5,
-        label="ML 탐지",
-        value=" / ".join(parts),
-        passed=bool(anomaly.ml_detected),
-    )
-
-
-def _grade_step(grade: str) -> JudgmentStep:
-    grade_text = {
-        "high": "통계 O + ML 동시 확인 → 고신뢰",
-        "medium": "통계 O + ML 미탐지 → 중신뢰",
-        "reference": "ML O + 통계 미탐지 → 참고",
-    }.get(grade, grade)
-    return JudgmentStep(step=6, label="신뢰도 등급 확정", value=grade_text, passed=True)
-
+# ── judgment_path 생성 (D-04) ─────────────────────────────────────────────────
 
 def _build_judgment_path(
     anomaly: AnomalyResult,
     stat_ts: StatTimeseries,
+    ml_summary: MLSummary,
+    settings: Settings,
 ) -> list[JudgmentStep]:
-    patterns = list(anomaly.pattern_types or [])
-    primary = anomaly.primary_pattern
+    """패턴 유형별 템플릿에 따라 판정 경로 6단계를 동적으로 생성 (api_spec_vN D-04)."""
+    patterns: list[str] = list(anomaly.pattern_types or [anomaly.primary_pattern])
+    is_multi = len(patterns) > 1
+    steps: list[JudgmentStep] = []
 
-    if len(patterns) == 1:
-        if primary == "pattern1":
-            steps = [
-                JudgmentStep(step=1, label="전이율 산출",
-                             value=f"해당 월 전이율 = {float(anomaly.transmission_rate or 0):.3f}", passed=True),
-                JudgmentStep(step=2, label="방향 확인",
-                             value="방향 역전" if anomaly.direction_reversal else "정방향", passed=True),
-                JudgmentStep(step=3, label="시차 경과 확인",
-                             value=f"기준 시차 {anomaly.normal_lag}개월, 실제 {anomaly.actual_lag}개월"
-                             if anomaly.actual_lag is not None else f"기준 시차 {anomaly.normal_lag}개월",
-                             passed=True),
-                JudgmentStep(step=4, label="방향 역전/시차 이탈 판정",
-                             value=str(anomaly.pattern1_flag_type or "탐지 확정"), passed=True),
-            ]
-        elif primary == "pattern2":
-            zscore_val = float(stat_ts.zscore or 0)
-            iqr_upper = float(stat_ts.iqr_upper or 0)
-            steps = [
-                JudgmentStep(step=1, label="전이율 산출",
-                             value=f"해당 월 전이율 = {float(anomaly.transmission_rate or 0):.3f}", passed=True),
-                JudgmentStep(step=2, label="롤링 Z-score",
-                             value=f"{zscore_val:.2f} → {'경보' if anomaly.zscore_alert else '주의'} 기준({settings.zscore_alert if anomaly.zscore_alert else settings.zscore_warning}) 초과",
-                             passed=anomaly.zscore_warning or anomaly.zscore_alert),
-                JudgmentStep(step=3, label="IQR 판정",
-                             value=f"Q3 + 1.5×IQR 상한({iqr_upper:.2f}) {'초과' if anomaly.iqr_outlier else '미달'}",
-                             passed=anomaly.iqr_outlier),
-                JudgmentStep(step=4, label="두 기준 동시 충족",
-                             value="통계 경보 확정" if anomaly.stat_detected else "미충족",
-                             passed=bool(anomaly.stat_detected)),
-            ]
-        else:  # pattern3
-            steps = [
-                JudgmentStep(step=1, label="국제가 안정 구간 진입",
-                             value="월 변동 ±3% 이내 안정 구간", passed=True),
-                JudgmentStep(step=2, label="스프레드 산출",
-                             value=f"N={anomaly.pattern3_n} 누적 스프레드 = {float(anomaly.spread_n3_value or 0):.4f}",
-                             passed=True),
-                JudgmentStep(step=3, label="N개월 누적 확대 확인",
-                             value="연속 확대 확인", passed=True),
-                JudgmentStep(step=4, label="탐지 확정",
-                             value="패턴 3 탐지", passed=True),
-            ]
+    # ── Steps 1~4: 패턴별 ──────────────────────────────────────────────────
+    tr = _to_float(anomaly.transmission_rate)
+    tr_str = f"{tr:.2f}" if tr is not None else "산출값 없음"
+
+    if is_multi:
+        steps.append(JudgmentStep(
+            step=1, label="전이율 산출",
+            value=f"해당 월 전이율 = {tr_str}", passed=True,
+        ))
+        pattern_descs: list[str] = []
+        for p in patterns:
+            if p == "pattern1":
+                flag = anomaly.pattern1_flag_type or ""
+                flag_label = {"direction_reversal": "방향 역전", "lag_deviation": "시차 이탈",
+                              "both": "방향 역전 + 시차 이탈"}.get(flag, "이상 탐지")
+                pattern_descs.append(f"패턴1({flag_label})")
+            elif p == "pattern2":
+                z = _to_float(stat_ts.zscore) if stat_ts else None
+                pattern_descs.append(f"패턴2(Z={z:.2f})" if z is not None else "패턴2")
+            elif p == "pattern3":
+                n = anomaly.pattern3_n or 3
+                pattern_descs.append(f"패턴3(N={n}개월)")
+        steps.append(JudgmentStep(
+            step=2, label="패턴별 판정",
+            value=" / ".join(pattern_descs), passed=True,
+        ))
+        steps.append(JudgmentStep(
+            step=3, label="복합 검증",
+            value=f"{len(patterns)}개 패턴 신호 동시 확인", passed=True,
+        ))
+        steps.append(JudgmentStep(
+            step=4, label="복수 탐지 확정",
+            value=f"{len(patterns)}개 패턴 복합 이상 탐지 확정", passed=True,
+        ))
+
+    elif "pattern1" in patterns:
+        steps.append(JudgmentStep(
+            step=1, label="전이율 산출",
+            value=f"해당 월 전이율 = {tr_str}", passed=True,
+        ))
+        dir_rev = anomaly.direction_reversal
+        steps.append(JudgmentStep(
+            step=2, label="방향 확인",
+            value=f"방향 역전 {'확인됨' if dir_rev else '없음'}",
+            passed=bool(dir_rev),
+        ))
+        actual = anomaly.actual_lag
+        normal = anomaly.normal_lag
+        lag_dev = anomaly.lag_deviation
+        lag_desc = (
+            f"정상 시차 {normal}개월 / 실제 {actual}개월 → 이탈 확인"
+            if actual is not None and normal is not None and lag_dev
+            else ("시차 이탈 없음" if not lag_dev else "시차 이탈 확인")
+        )
+        steps.append(JudgmentStep(
+            step=3, label="시차 경과 확인",
+            value=lag_desc, passed=bool(lag_dev),
+        ))
+        flag = anomaly.pattern1_flag_type or ""
+        flag_label = {"direction_reversal": "방향 역전", "lag_deviation": "시차 이탈",
+                      "both": "방향 역전 + 시차 이탈"}.get(flag, "이상 탐지")
+        steps.append(JudgmentStep(
+            step=4, label="방향 역전/시차 이탈 판정",
+            value=f"패턴 1 확정 — {flag_label}", passed=True,
+        ))
+
+    elif "pattern2" in patterns:
+        steps.append(JudgmentStep(
+            step=1, label="전이율 산출",
+            value=f"해당 월 전이율 = {tr_str}", passed=True,
+        ))
+        z = _to_float(stat_ts.zscore) if stat_ts else None
+        z_str = f"{z:.2f}" if z is not None else "—"
+        threshold = settings.zscore_alert if anomaly.zscore_alert else settings.zscore_warning
+        steps.append(JudgmentStep(
+            step=2, label="롤링 Z-score",
+            value=f"{z_str} → {'경보' if anomaly.zscore_alert else '주의'} 기준({threshold}) 초과",
+            passed=bool(anomaly.zscore_warning or anomaly.zscore_alert),
+        ))
+        iqr_upper = _to_float(stat_ts.iqr_upper) if stat_ts else None
+        iqr_desc = (
+            f"Q3 + 1.5×IQR 상한({iqr_upper:.2f}) {'초과' if anomaly.iqr_outlier else '미초과'}"
+            if iqr_upper is not None
+            else "IQR 이상치 판정"
+        )
+        steps.append(JudgmentStep(
+            step=3, label="IQR 판정",
+            value=iqr_desc, passed=bool(anomaly.iqr_outlier),
+        ))
+        both = (anomaly.zscore_warning or anomaly.zscore_alert) and anomaly.iqr_outlier
+        steps.append(JudgmentStep(
+            step=4, label="두 기준 동시 충족",
+            value="Z-score·IQR 두 기준 동시 충족 — 통계 경보 확정" if both else "부분 기준만 충족",
+            passed=bool(both),
+        ))
+
+    elif "pattern3" in patterns:
+        steps.append(JudgmentStep(
+            step=1, label="국제가 안정 구간 진입",
+            value="국제가 월 변동 ±3% 이내", passed=True,
+        ))
+        n3 = _to_float(anomaly.spread_n3_value)
+        steps.append(JudgmentStep(
+            step=2, label="스프레드 산출",
+            value=f"N=3 기준 누적 스프레드 = {n3:.4f}" if n3 is not None else "스프레드 산출",
+            passed=True,
+        ))
+        n = anomaly.pattern3_n or 3
+        steps.append(JudgmentStep(
+            step=3, label="N개월 누적 확대 확인",
+            value=f"{n}개월 연속 같은 방향 확대 확인", passed=True,
+        ))
+        steps.append(JudgmentStep(
+            step=4, label="탐지 확정",
+            value="패턴 3 이상 탐지 확정", passed=True,
+        ))
+
     else:
-        # 복수 패턴: 각 패턴 판정을 순서대로
-        steps = [
-            JudgmentStep(step=i + 1, label=f"패턴 {p[-1]} 판정",
-                         value=f"{p} 탐지", passed=True)
-            for i, p in enumerate(patterns[:4])
-        ]
-        if len(steps) < 4:
-            steps.append(JudgmentStep(step=4, label="복수 탐지 확정",
-                                      value=f"{len(patterns)}개 패턴 동시 탐지", passed=True))
+        # fallback
+        steps.extend([
+            JudgmentStep(step=1, label="이상 신호 확인", value="통계 기반 이상 탐지", passed=True),
+            JudgmentStep(step=2, label="검증", value="추가 검증 수행", passed=True),
+            JudgmentStep(step=3, label="확인", value="이상 확인", passed=True),
+            JudgmentStep(step=4, label="탐지 확정", value="이상 탐지 확정", passed=True),
+        ])
 
-    steps.append(_ml_step(anomaly))
-    steps.append(_grade_step(anomaly.confidence_grade))
+    # ── Step 5: ML 탐지 ────────────────────────────────────────────────────
+    votes = []
+    if_a = ml_summary.if_anomaly
+    lof_a = ml_summary.lof_anomaly
+    svm_a = ml_summary.svm_anomaly
+    if if_a is not None:
+        votes.append(f"IF {'✓' if if_a else '✗'}")
+    if lof_a is not None:
+        votes.append(f"LOF {'✓' if lof_a else '✗'}")
+    if svm_a is not None:
+        votes.append(f"SVM {'✓' if svm_a else '✗'}")
+    vote_str = " / ".join(votes) if votes else "ML 판정 없음"
+    steps.append(JudgmentStep(
+        step=5, label="ML 탐지",
+        value=vote_str, passed=ml_summary.ml_detected,
+    ))
+
+    # ── Step 6: 신뢰도 등급 확정 ───────────────────────────────────────────
+    grade_desc = {
+        "high": "통계 O + ML 동시 확인 → 고신뢰",
+        "medium": "통계 O + ML 미탐지 → 중신뢰",
+        "reference": "ML O + 통계 미탐지 → 참고",
+    }.get(anomaly.confidence_grade, anomaly.confidence_grade)
+    steps.append(JudgmentStep(
+        step=6, label="신뢰도 등급 확정",
+        value=grade_desc, passed=True,
+    ))
+
     return steps
 
 
-# ── 1. /detail ────────────────────────────────────────────────────────────────
+# ── 집계 헬퍼 (stat-series granularity) ─────────────────────────────────────
 
-async def get_detail(anomaly_id: int, session: AsyncSession) -> AnomalyDetailResponse:
-    """패널 통합 데이터 조회 (feature_spec §3.1)."""
-    try:
-        anomaly = await _fetch_anomaly(anomaly_id, session)
-        stat_ts = await _fetch_stat_ts(anomaly.commodity_id, anomaly.segment_id, anomaly.period, session)
+def _group_key(row: StatTimeseries, granularity: str) -> tuple:
+    p: date = row.period
+    if granularity == "quarterly":
+        return (p.year, (p.month - 1) // 3 + 1)
+    return (p.year,)  # yearly
 
-        # commodities JOIN → name_kr (commodity_id 는 String 필드, PK(id)가 아니므로 WHERE 사용)
-        comm_result = await session.execute(
-            select(Commodity).where(Commodity.commodity_id == anomaly.commodity_id)
+
+def _group_period_label(key: tuple, granularity: str) -> str:
+    if granularity == "quarterly":
+        year, q = key
+        return f"{year}-{q * 3:02d}"
+    return f"{key[0]}-12"
+
+
+def _avg(vals: list[float | None]) -> float | None:
+    filtered = [v for v in vals if v is not None]
+    return sum(filtered) / len(filtered) if filtered else None
+
+
+def _rows_to_series_points(
+    rows: list[StatTimeseries],
+    metric: str,
+    granularity: str,
+    bp_dates_set: set[date],
+) -> list[StatSeriesPoint]:
+    """stat_timeseries 행 목록 → StatSeriesPoint 목록 (granularity 집계 포함)."""
+    if granularity == "monthly":
+        points: list[StatSeriesPoint] = []
+        for row in rows:
+            p_label = _to_yyyymm(row.period)
+            is_bp = row.period in bp_dates_set
+            points.append(StatSeriesPoint(
+                period=p_label,
+                transmission_rate=_to_float(row.transmission_rate),
+                rolling_mean=_to_float(row.rolling_mean),
+                q1=_to_float(row.q1),
+                q3=_to_float(row.q3),
+                in_warmup_period=row.in_warmup_period,
+                is_breakpoint=is_bp,
+                zscore=_to_float(row.zscore),
+                ect_or_spread=_to_float(row.ect_or_spread),
+                ect_type=row.ect_type,
+            ))
+        return points
+
+    # quarterly / yearly: 집계
+    def sort_key(r: StatTimeseries) -> tuple:
+        return _group_key(r, granularity)
+
+    sorted_rows = sorted(rows, key=sort_key)
+    result: list[StatSeriesPoint] = []
+
+    for key, group_iter in groupby(sorted_rows, key=sort_key):
+        group = list(group_iter)
+        p_label = _group_period_label(key, granularity)
+        is_bp = any(r.period in bp_dates_set for r in group)
+        result.append(StatSeriesPoint(
+            period=p_label,
+            transmission_rate=_avg([_to_float(r.transmission_rate) for r in group]),
+            rolling_mean=_avg([_to_float(r.rolling_mean) for r in group]),
+            q1=_avg([_to_float(r.q1) for r in group]),
+            q3=_avg([_to_float(r.q3) for r in group]),
+            in_warmup_period=any(r.in_warmup_period for r in group),
+            is_breakpoint=is_bp,
+            zscore=_avg([_to_float(r.zscore) for r in group]),
+            ect_or_spread=_avg([_to_float(r.ect_or_spread) for r in group]),
+            ect_type=group[0].ect_type if group else None,
+        ))
+    return result
+
+
+# ── 서비스 함수 ───────────────────────────────────────────────────────────────
+
+async def get_panel_detail(
+    db: AsyncSession,
+    anomaly_id: int,
+    settings: Settings,
+) -> AnomalyDetailResponse:
+    """GET /anomalies/{id}/detail — 다중 테이블 조인 + judgment_path 생성."""
+    anomaly, segment = await _get_anomaly_and_segment(db, anomaly_id)
+
+    # stat_timeseries (해당 월)
+    stat_ts = (
+        await db.execute(
+            select(StatTimeseries).where(
+                StatTimeseries.commodity_id == anomaly.commodity_id,
+                StatTimeseries.segment_id == anomaly.segment_id,
+                StatTimeseries.period == anomaly.period,
+            )
         )
-        commodity = comm_result.scalar_one_or_none()
-        commodity_name_kr = commodity.name_kr if commodity else anomaly.commodity_id
+    ).scalar_one_or_none()
 
-        # segments JOIN → label_kr
-        seg_result = await session.execute(
-            select(Segment).where(Segment.segment_id == anomaly.segment_id)
-        )
-        seg = seg_result.scalar_one_or_none()
-        segment_label_kr = seg.label_kr if seg else anomaly.segment_id
-
-        # baselines — subperiod_id IS NULL (D-15: 전체 기간 기준선)
-        bl_result = await session.execute(
+    # baselines (subperiod_id IS NULL — 전체 기간 기준선, D-15)
+    baseline = (
+        await db.execute(
             select(Baseline).where(
                 Baseline.commodity_id == anomaly.commodity_id,
                 Baseline.segment_id == anomaly.segment_id,
                 Baseline.subperiod_id.is_(None),
             )
         )
-        baseline = bl_result.scalar_one_or_none()
+    ).scalar_one_or_none()
 
-        # asymmetry_results
-        asym_result = await session.execute(
+    if not stat_ts or not baseline:
+        raise APIError(
+            "API-ANO-002",
+            "이상 탐지와 연관된 통계 시계열 또는 기준선 데이터가 없습니다.",
+            context={
+                "anomaly_id": anomaly_id,
+                "has_stat_ts": stat_ts is not None,
+                "has_baseline": baseline is not None,
+            },
+            http_status=500,
+            public_code="PIPELINE_DATA_MISSING",
+        )
+
+    # asymmetry_results
+    asymmetry = (
+        await db.execute(
             select(AsymmetryResult).where(
                 AsymmetryResult.commodity_id == anomaly.commodity_id,
                 AsymmetryResult.segment_id == anomaly.segment_id,
             )
         )
-        asym = asym_result.scalar_one_or_none()
+    ).scalar_one_or_none()
 
-        # cointegration_results — UNIQUE (commodity_id, segment_id), 행 1개
-        coint_result = await session.execute(
+    # cointegration_results (stat_metrics.cointegrated·model_type 출처)
+    cointegration = (
+        await db.execute(
             select(CointegrationResult).where(
                 CointegrationResult.commodity_id == anomaly.commodity_id,
                 CointegrationResult.segment_id == anomaly.segment_id,
             )
         )
-        coint = coint_result.scalar_one_or_none()
+    ).scalar_one_or_none()
 
-        # ml_scores — 조인 키: (commodity_id, segment_id, period)
-        ml_result = await session.execute(
+    # ml_scores (조인 키: commodity_id, segment_id, period — FK 없음)
+    ml_score = (
+        await db.execute(
             select(MLScore).where(
                 MLScore.commodity_id == anomaly.commodity_id,
                 MLScore.segment_id == anomaly.segment_id,
                 MLScore.period == anomaly.period,
             )
         )
-        ml = ml_result.scalar_one_or_none()
+    ).scalar_one_or_none()
 
-        # subperiod_index (anomaly.subperiod_id → subperiods)
-        subperiod_index: int | None = None
-        if anomaly.subperiod_id is not None:
-            sp = await session.get(Subperiod, anomaly.subperiod_id)
-            subperiod_index = sp.subperiod_index if sp else None
+    # subperiod_index
+    subperiod_index: int | None = None
+    if anomaly.subperiod_id:
+        sp = await db.get(Subperiod, anomaly.subperiod_id)
+        if sp:
+            subperiod_index = sp.subperiod_index
 
-        # breakpoints.bp_dates (D-16)
-        bp_result = await session.execute(
+    # breakpoints.bp_dates (D-16: baselines 아님)
+    bp_row = (
+        await db.execute(
             select(Breakpoint).where(
                 Breakpoint.commodity_id == anomaly.commodity_id,
                 Breakpoint.segment_id == anomaly.segment_id,
             )
         )
-        bp = bp_result.scalar_one_or_none()
-        bp_dates = [_to_yyyymm(d) for d in (bp.bp_dates or [])] if bp else []
+    ).scalar_one_or_none()
+    bp_dates: list[str] = []
+    if bp_row and bp_row.bp_dates:
+        bp_dates = [d.strftime("%Y-%m") for d in bp_row.bp_dates]
 
-        stat_metrics = StatMetrics(
-            transmission_rate=float(anomaly.transmission_rate) if anomaly.transmission_rate is not None else None,
-            rolling_mean=float(stat_ts.rolling_mean) if stat_ts.rolling_mean is not None else None,
-            zscore=float(stat_ts.zscore) if stat_ts.zscore is not None else None,
-            zscore_warning=bool(anomaly.zscore_warning),
-            zscore_alert=bool(anomaly.zscore_alert),
-            zscore_threshold_warning=settings.zscore_warning,
-            zscore_threshold_alert=settings.zscore_alert,
-            q1=float(stat_ts.q1) if stat_ts.q1 is not None else None,
-            q3=float(stat_ts.q3) if stat_ts.q3 is not None else None,
-            iqr_lower=float(stat_ts.iqr_lower) if stat_ts.iqr_lower is not None else None,
-            iqr_upper=float(stat_ts.iqr_upper) if stat_ts.iqr_upper is not None else None,
-            iqr_outlier=bool(anomaly.iqr_outlier),
-            over_transmission=bool(anomaly.over_transmission),
-            under_transmission=bool(anomaly.under_transmission),
-            normal_lag=int(baseline.normal_transmission_lag) if baseline else None,
-            actual_lag=int(anomaly.actual_lag) if anomaly.actual_lag is not None else None,
-            direction_reversal=bool(anomaly.direction_reversal),
-            lag_deviation=bool(anomaly.lag_deviation),
-            pattern1_flag_type=anomaly.pattern1_flag_type,
-            ect_or_spread=float(stat_ts.ect_or_spread) if stat_ts.ect_or_spread is not None else None,
-            ect_type=stat_ts.ect_type,
-            spread_n3=float(stat_ts.spread_n3) if stat_ts.spread_n3 is not None else None,
-            alpha_plus=float(asym.alpha_plus) if asym and asym.alpha_plus is not None else None,
-            alpha_minus=float(asym.alpha_minus) if asym and asym.alpha_minus is not None else None,
-            wald_pvalue=float(asym.wald_pvalue) if asym and asym.wald_pvalue is not None else None,
-            asymmetry_significant=bool(asym.asymmetry_significant) if asym else None,
-            rocket_feather_direction=asym.rocket_feather_direction if asym else None,
-            model_type=coint.model_type if coint else (baseline.model_type if baseline else None),
-            cointegrated=bool(coint.cointegrated) if coint else None,
-            subperiod_index=subperiod_index,
-            bp_dates=[d for d in bp_dates if d is not None],
+    # commodity name_kr
+    commodity = (
+        await db.execute(
+            select(Commodity).where(Commodity.commodity_id == anomaly.commodity_id)
         )
+    ).scalar_one_or_none()
+    commodity_name_kr = commodity.name_kr if commodity else anomaly.commodity_id
 
-        ml_summary = MLSummary(
-            ml_vote=int(anomaly.ml_vote),
-            ml_detected=bool(anomaly.ml_detected),
-            if_anomaly=bool(anomaly.if_anomaly) if anomaly.if_anomaly is not None else None,
-            if_score=float(ml.if_score) if ml and ml.if_score is not None else None,
-            if_percentile=float(ml.if_percentile) if ml and ml.if_percentile is not None else None,
-            lof_anomaly=bool(anomaly.lof_anomaly) if anomaly.lof_anomaly is not None else None,
-            lof_score=float(ml.lof_score) if ml and ml.lof_score is not None else None,
-            lof_percentile=float(ml.lof_percentile) if ml and ml.lof_percentile is not None else None,
-            svm_anomaly=bool(anomaly.svm_anomaly) if anomaly.svm_anomaly is not None else None,
-            svm_score=float(ml.svm_score) if ml and ml.svm_score is not None else None,
-            svm_percentile=float(ml.svm_percentile) if ml and ml.svm_percentile is not None else None,
-        )
+    # ── StatMetrics ────────────────────────────────────────────────────────
+    model_type = (
+        (cointegration.model_type if cointegration else None) or baseline.model_type
+    )
+    stat_metrics = StatMetrics(
+        transmission_rate=_to_float(anomaly.transmission_rate),
+        rolling_mean=_to_float(stat_ts.rolling_mean),
+        zscore=_to_float(stat_ts.zscore),
+        zscore_warning=anomaly.zscore_warning,
+        zscore_alert=anomaly.zscore_alert,
+        zscore_threshold_warning=settings.zscore_warning,
+        zscore_threshold_alert=settings.zscore_alert,
+        q1=_to_float(stat_ts.q1),
+        q3=_to_float(stat_ts.q3),
+        iqr_lower=_to_float(stat_ts.iqr_lower),
+        iqr_upper=_to_float(stat_ts.iqr_upper),
+        iqr_outlier=anomaly.iqr_outlier,
+        over_transmission=anomaly.over_transmission,
+        under_transmission=anomaly.under_transmission,
+        normal_lag=anomaly.normal_lag,
+        actual_lag=anomaly.actual_lag,
+        direction_reversal=anomaly.direction_reversal,
+        lag_deviation=anomaly.lag_deviation,
+        pattern1_flag_type=anomaly.pattern1_flag_type,
+        ect_or_spread=_to_float(stat_ts.ect_or_spread),
+        ect_type=stat_ts.ect_type,
+        spread_n3=_to_float(anomaly.spread_n3_value),
+        alpha_plus=_to_float(asymmetry.alpha_plus) if asymmetry else None,
+        alpha_minus=_to_float(asymmetry.alpha_minus) if asymmetry else None,
+        wald_pvalue=_to_float(asymmetry.wald_pvalue) if asymmetry else None,
+        asymmetry_significant=asymmetry.asymmetry_significant if asymmetry else None,
+        rocket_feather_direction=(
+            asymmetry.rocket_feather_direction if asymmetry else None
+        ),
+        model_type=model_type,
+        cointegrated=cointegration.cointegrated if cointegration else None,
+        subperiod_index=subperiod_index,
+        bp_dates=bp_dates,
+    )
 
-        judgment_path = _build_judgment_path(anomaly, stat_ts)
+    # ── MLSummary ──────────────────────────────────────────────────────────
+    ml_summary = MLSummary(
+        ml_vote=anomaly.ml_vote,
+        ml_detected=anomaly.ml_detected,
+        if_anomaly=anomaly.if_anomaly,
+        if_score=_to_float(ml_score.if_score) if ml_score else None,
+        if_percentile=_to_float(ml_score.if_percentile) if ml_score else None,
+        lof_anomaly=anomaly.lof_anomaly,
+        lof_score=_to_float(ml_score.lof_score) if ml_score else None,
+        lof_percentile=_to_float(ml_score.lof_percentile) if ml_score else None,
+        svm_anomaly=anomaly.svm_anomaly,
+        svm_score=_to_float(ml_score.svm_score) if ml_score else None,
+        svm_percentile=_to_float(ml_score.svm_percentile) if ml_score else None,
+    )
 
-        return AnomalyDetailResponse(
-            anomaly_id=anomaly.id,
-            commodity_id=anomaly.commodity_id,
-            commodity_name_kr=commodity_name_kr,
-            segment_id=anomaly.segment_id,
-            segment_label_kr=segment_label_kr,
-            period=_to_yyyymm(anomaly.period),
-            primary_pattern=anomaly.primary_pattern,
-            pattern_types=list(anomaly.pattern_types),
-            confidence_grade=anomaly.confidence_grade,
-            is_new=bool(anomaly.is_new),
-            stat_metrics=stat_metrics,
-            ml_summary=ml_summary,
-            judgment_path=judgment_path,
-        )
-    except APIError:
-        raise
-    except Exception as exc:
-        raise APIError(
-            "API-INT-001",
-            "내부 예외 처리 실패",
-            context={"anomaly_id": anomaly_id},
-            http_status=500,
-            public_code="INTERNAL_ERROR",
-        ) from exc
+    judgment_path = _build_judgment_path(anomaly, stat_ts, ml_summary, settings)
 
-
-# ── 2. /stat-series ───────────────────────────────────────────────────────────
-
-_SNAPSHOT_METRICS = {"iqr", "asymmetry"}
+    return AnomalyDetailResponse(
+        anomaly_id=anomaly.id,
+        commodity_id=anomaly.commodity_id,
+        commodity_name_kr=commodity_name_kr,
+        segment_id=anomaly.segment_id,
+        segment_label_kr=segment.label_kr,
+        period=anomaly.period.strftime("%Y-%m"),
+        primary_pattern=anomaly.primary_pattern,
+        pattern_types=list(anomaly.pattern_types),
+        confidence_grade=anomaly.confidence_grade,
+        is_new=anomaly.is_new,
+        stat_metrics=stat_metrics,
+        ml_summary=ml_summary,
+        judgment_path=judgment_path,
+    )
 
 
 async def get_stat_series(
+    db: AsyncSession,
     anomaly_id: int,
     metric: str,
-    from_str: str | None,
-    to_str: str | None,
-    granularity: Literal["monthly", "quarterly", "yearly"],
-    session: AsyncSession,
+    from_: str | None,
+    to_: str | None,
+    granularity: str,
 ) -> StatSeriesResponse:
-    """지표별 인라인 시계열 (api_spec_vN §stat-series)."""
-    if metric in _SNAPSHOT_METRICS:
+    """GET /anomalies/{id}/stat-series — metric 4종 시계열.
+
+    metric 검증:
+    - iqr/asymmetry → 400 SNAPSHOT_METRIC_ON_SERIES
+    - 허용 목록 외   → 400 INVALID_METRIC
+    """
+    if metric in _SNAPSHOT_ONLY:
         raise APIError(
             "API-MET-002",
-            f"'{metric}'은 스냅샷 전용 지표입니다. /stat-snapshot 엔드포인트를 사용하세요.",
+            "해당 지표는 /stat-snapshot 엔드포인트를 사용하십시오.",
             context={"metric": metric},
             http_status=400,
             public_code="SNAPSHOT_METRIC_ON_SERIES",
         )
-
-    allowed = {"transmission_rate", "zscore", "ect", "breakpoints"}
-    if metric not in allowed:
+    if metric not in _SERIES_METRICS:
         raise APIError(
             "API-MET-001",
-            f"허용되지 않는 metric 값입니다: {metric!r}",
-            context={"metric": metric, "allowed": sorted(allowed)},
+            f"지원하지 않는 metric입니다: {metric!r}. "
+            f"허용값: {', '.join(sorted(_SERIES_METRICS))}",
+            context={"metric": metric},
             http_status=400,
             public_code="INVALID_METRIC",
         )
 
-    try:
-        anomaly = await _fetch_anomaly(anomaly_id, session)
+    anomaly, _ = await _get_anomaly_and_segment(db, anomaly_id)
 
-        # 날짜 범위 파싱
-        from_date = _parse_yyyymm(from_str) if from_str else None
-        to_date = _parse_yyyymm(to_str) if to_str else None
-        if from_date and to_date and from_date > to_date:
+    # from/to 날짜 처리
+    if from_ is not None and to_ is not None:
+        from_date = _parse_yyyymm(from_)
+        to_date = _parse_yyyymm(to_)
+        if from_date > to_date:
             raise APIError(
                 "API-STR-002",
-                "from이 to보다 클 수 없습니다.",
-                context={"from": from_str, "to": to_str},
+                "from이 to보다 이후일 수 없습니다.",
+                context={"from": from_, "to": to_},
                 http_status=400,
                 public_code="INVALID_DATE_RANGE",
             )
+    elif from_ is not None:
+        from_date = _parse_yyyymm(from_)
+        to_date = None
+    elif to_ is not None:
+        from_date = None
+        to_date = _parse_yyyymm(to_)
+    else:
+        from_date = None
+        to_date = None
 
-        # stat_timeseries 조회
-        stmt = select(StatTimeseries).where(
+    # 기본값: commodity.analysis_start ~ 최신 period
+    if from_date is None:
+        commodity = (
+            await db.execute(
+                select(Commodity).where(Commodity.commodity_id == anomaly.commodity_id)
+            )
+        ).scalar_one_or_none()
+        if commodity and commodity.analysis_start:
+            from_date = commodity.analysis_start
+        else:
+            min_result = await db.execute(
+                select(func.min(StatTimeseries.period)).where(
+                    StatTimeseries.commodity_id == anomaly.commodity_id,
+                    StatTimeseries.segment_id == anomaly.segment_id,
+                )
+            )
+            from_date = min_result.scalar()
+
+    if to_date is None:
+        max_result = await db.execute(
+            select(func.max(StatTimeseries.period)).where(
+                StatTimeseries.commodity_id == anomaly.commodity_id,
+                StatTimeseries.segment_id == anomaly.segment_id,
+            )
+        )
+        to_date = max_result.scalar()
+
+    # stat_timeseries 조회
+    stmt = (
+        select(StatTimeseries)
+        .where(
             StatTimeseries.commodity_id == anomaly.commodity_id,
             StatTimeseries.segment_id == anomaly.segment_id,
         )
-        if from_date:
-            stmt = stmt.where(StatTimeseries.period >= from_date)
-        if to_date:
-            stmt = stmt.where(StatTimeseries.period <= to_date)
-        stmt = stmt.order_by(StatTimeseries.period)
+        .order_by(StatTimeseries.period)
+    )
+    if from_date:
+        stmt = stmt.where(StatTimeseries.period >= from_date)
+    if to_date:
+        stmt = stmt.where(StatTimeseries.period <= to_date)
 
-        result = await session.execute(stmt)
-        rows = result.scalars().all()
+    rows: list[StatTimeseries] = list((await db.execute(stmt)).scalars().all())
 
-        # breakpoints.bp_dates (metric=breakpoints 또는 transmission_rate 시 is_breakpoint 표시)
-        bp_dates_set: set[date] = set()
-        if metric == "breakpoints":
-            bp_res = await session.execute(
+    if not rows:
+        raise APIError(
+            "API-ANO-002",
+            "해당 이상 탐지와 연관된 통계 시계열 데이터가 없습니다.",
+            context={"anomaly_id": anomaly_id},
+            http_status=500,
+            public_code="PIPELINE_DATA_MISSING",
+        )
+
+    # breakpoints.bp_dates (metric=breakpoints 시 is_breakpoint 마킹)
+    bp_dates_set: set[date] = set()
+    if metric == "breakpoints":
+        bp_row = (
+            await db.execute(
                 select(Breakpoint).where(
                     Breakpoint.commodity_id == anomaly.commodity_id,
                     Breakpoint.segment_id == anomaly.segment_id,
                 )
             )
-            bp = bp_res.scalar_one_or_none()
-            if bp and bp.bp_dates:
-                bp_dates_set = set(bp.bp_dates)
+        ).scalar_one_or_none()
+        if bp_row and bp_row.bp_dates:
+            bp_dates_set = set(bp_row.bp_dates)
 
-        data: list[StatSeriesPoint] = []
-        for row in rows:
-            point = StatSeriesPoint(
-                period=_to_yyyymm(row.period),
-                in_warmup_period=bool(row.in_warmup_period),
-                is_breakpoint=row.period in bp_dates_set,
-            )
-            if metric in ("transmission_rate", "breakpoints"):
-                point.transmission_rate = float(row.transmission_rate) if row.transmission_rate is not None else None
-                point.rolling_mean = float(row.rolling_mean) if row.rolling_mean is not None else None
-                point.q1 = float(row.q1) if row.q1 is not None else None
-                point.q3 = float(row.q3) if row.q3 is not None else None
-            elif metric == "zscore":
-                point.zscore = float(row.zscore) if row.zscore is not None else None
-            elif metric == "ect":
-                point.ect_or_spread = float(row.ect_or_spread) if row.ect_or_spread is not None else None
-                point.ect_type = row.ect_type
-            data.append(point)
+    points = _rows_to_series_points(rows, metric, granularity, bp_dates_set)
 
-        # granularity 집계 (monthly가 아닌 경우)
-        if granularity != "monthly":
-            data = _aggregate_stat_series(data, granularity)
+    actual_from = points[0].period if points else (from_ or "")
+    actual_to = points[-1].period if points else (to_ or "")
+    requested_from = from_ or actual_from
+    requested_to = to_ or actual_to
 
-        actual_from = data[0].period if data else (from_str or "")
-        actual_to = data[-1].period if data else (to_str or "")
+    return StatSeriesResponse(
+        anomaly_id=anomaly.id,
+        commodity_id=anomaly.commodity_id,
+        segment_id=anomaly.segment_id,
+        metric=metric,
+        highlight_period=anomaly.period.strftime("%Y-%m"),
+        requested_from=requested_from,
+        requested_to=requested_to,
+        actual_from=actual_from,
+        actual_to=actual_to,
+        granularity=granularity,
+        total_points=len(points),
+        data=points,
+    )
 
-        return StatSeriesResponse(
-            anomaly_id=anomaly_id,
-            commodity_id=anomaly.commodity_id,
-            segment_id=anomaly.segment_id,
-            metric=metric,
-            highlight_period=_to_yyyymm(anomaly.period),
-            requested_from=from_str or actual_from,
-            requested_to=to_str or actual_to,
-            actual_from=actual_from,
-            actual_to=actual_to,
-            granularity=granularity,
-            total_points=len(data),
-            data=data,
-        )
-    except APIError:
-        raise
-    except Exception as exc:
-        raise APIError(
-            "API-INT-001",
-            "내부 예외 처리 실패",
-            context={"anomaly_id": anomaly_id},
-            http_status=500,
-            public_code="INTERNAL_ERROR",
-        ) from exc
-
-
-def _aggregate_stat_series(
-    data: list[StatSeriesPoint],
-    granularity: Literal["quarterly", "yearly"],
-) -> list[StatSeriesPoint]:
-    """monthly 데이터를 quarterly/yearly로 단순 평균 집계."""
-    from collections import defaultdict
-
-    def _bucket(period: str) -> str:
-        year, month = period[:4], int(period[5:7])
-        if granularity == "yearly":
-            return f"{year}-01"
-        q = (month - 1) // 3 + 1
-        return f"{year}-{q * 3 - 2:02d}"
-
-    buckets: dict[str, list[StatSeriesPoint]] = defaultdict(list)
-    for p in data:
-        buckets[_bucket(p.period)].append(p)
-
-    def _avg(vals: list) -> float | None:
-        clean = [v for v in vals if v is not None]
-        return sum(clean) / len(clean) if clean else None
-
-    result = []
-    for key in sorted(buckets):
-        group = buckets[key]
-        merged = StatSeriesPoint(
-            period=key,
-            in_warmup_period=any(p.in_warmup_period for p in group),
-            is_breakpoint=any(p.is_breakpoint for p in group),
-            transmission_rate=_avg([p.transmission_rate for p in group]),
-            rolling_mean=_avg([p.rolling_mean for p in group]),
-            q1=_avg([p.q1 for p in group]),
-            q3=_avg([p.q3 for p in group]),
-            zscore=_avg([p.zscore for p in group]),
-            ect_or_spread=_avg([p.ect_or_spread for p in group]),
-            ect_type=group[0].ect_type if group else None,
-        )
-        result.append(merged)
-    return result
-
-
-# ── 3. /stat-snapshot ────────────────────────────────────────────────────────
 
 async def get_stat_snapshot_iqr(
+    db: AsyncSession,
     anomaly_id: int,
-    session: AsyncSession,
+    settings: Settings,
 ) -> StatSnapshotIQRResponse:
-    """IQR 박스플롯 스냅샷 (metric=iqr)."""
-    try:
-        anomaly = await _fetch_anomaly(anomaly_id, session)
-        stat_ts = await _fetch_stat_ts(anomaly.commodity_id, anomaly.segment_id, anomaly.period, session)
+    """GET /anomalies/{id}/stat-snapshot?metric=iqr — IQR 박스플롯 스냅샷."""
+    anomaly, _ = await _get_anomaly_and_segment(db, anomaly_id)
 
-        return StatSnapshotIQRResponse(
-            anomaly_id=anomaly_id,
-            metric="iqr",
-            period=_to_yyyymm(anomaly.period),
-            q1=float(stat_ts.q1) if stat_ts.q1 is not None else None,
-            median=float(stat_ts.rolling_mean) if stat_ts.rolling_mean is not None else None,
-            q3=float(stat_ts.q3) if stat_ts.q3 is not None else None,
-            iqr_lower=float(stat_ts.iqr_lower) if stat_ts.iqr_lower is not None else None,
-            iqr_upper=float(stat_ts.iqr_upper) if stat_ts.iqr_upper is not None else None,
-            current_value=float(stat_ts.transmission_rate) if stat_ts.transmission_rate is not None else None,
-            window_months=settings.rolling_window,
+    stat_ts = (
+        await db.execute(
+            select(StatTimeseries).where(
+                StatTimeseries.commodity_id == anomaly.commodity_id,
+                StatTimeseries.segment_id == anomaly.segment_id,
+                StatTimeseries.period == anomaly.period,
+            )
         )
-    except APIError:
-        raise
-    except Exception as exc:
+    ).scalar_one_or_none()
+
+    if not stat_ts:
         raise APIError(
-            "API-INT-001", "내부 예외 처리 실패",
-            context={"anomaly_id": anomaly_id}, http_status=500, public_code="INTERNAL_ERROR",
-        ) from exc
+            "API-ANO-002",
+            "IQR 스냅샷에 필요한 통계 시계열 데이터가 없습니다.",
+            context={"anomaly_id": anomaly_id},
+            http_status=500,
+            public_code="PIPELINE_DATA_MISSING",
+        )
+
+    return StatSnapshotIQRResponse(
+        anomaly_id=anomaly.id,
+        metric="iqr",
+        period=anomaly.period.strftime("%Y-%m"),
+        q1=_to_float(stat_ts.q1),
+        median=_to_float(stat_ts.rolling_mean),
+        q3=_to_float(stat_ts.q3),
+        iqr_lower=_to_float(stat_ts.iqr_lower),
+        iqr_upper=_to_float(stat_ts.iqr_upper),
+        current_value=_to_float(anomaly.transmission_rate),
+        window_months=settings.rolling_window,
+    )
 
 
 async def get_stat_snapshot_asymmetry(
+    db: AsyncSession,
     anomaly_id: int,
-    session: AsyncSession,
 ) -> StatSnapshotAsymmetryResponse:
-    """비대칭 히스토그램 스냅샷 (metric=asymmetry).
+    """GET /anomalies/{id}/stat-snapshot?metric=asymmetry — 비대칭 히스토그램 스냅샷.
 
-    up_samples/down_samples: stat_timeseries.upstream_pct 양/음수 구간의 transmission_rate 목록.
+    up_samples/down_samples: upstream_pct > 0 / < 0 월의 transmission_rate 목록.
     """
-    try:
-        anomaly = await _fetch_anomaly(anomaly_id, session)
+    anomaly, _ = await _get_anomaly_and_segment(db, anomaly_id)
 
-        asym_result = await session.execute(
+    asymmetry = (
+        await db.execute(
             select(AsymmetryResult).where(
                 AsymmetryResult.commodity_id == anomaly.commodity_id,
                 AsymmetryResult.segment_id == anomaly.segment_id,
             )
         )
-        asym = asym_result.scalar_one_or_none()
+    ).scalar_one_or_none()
 
-        # stat_timeseries 전체 기간 조회 → upstream_pct 기준 상승/하락 구간 분류
-        ts_result = await session.execute(
-            select(StatTimeseries).where(
-                StatTimeseries.commodity_id == anomaly.commodity_id,
-                StatTimeseries.segment_id == anomaly.segment_id,
-                StatTimeseries.in_warmup_period.is_(False),
-            ).order_by(StatTimeseries.period)
+    # stat_timeseries 전체 (국면 구분 집계)
+    ts_rows: list[StatTimeseries] = list(
+        (
+            await db.execute(
+                select(StatTimeseries)
+                .where(
+                    StatTimeseries.commodity_id == anomaly.commodity_id,
+                    StatTimeseries.segment_id == anomaly.segment_id,
+                    StatTimeseries.transmission_rate.is_not(None),
+                    StatTimeseries.upstream_pct.is_not(None),
+                )
+                .order_by(StatTimeseries.period)
+            )
         )
-        ts_rows = ts_result.scalars().all()
+        .scalars()
+        .all()
+    )
 
-        up_samples = [
-            float(r.transmission_rate)
-            for r in ts_rows
-            if r.upstream_pct is not None and r.upstream_pct > 0
-            and r.transmission_rate is not None
-        ]
-        down_samples = [
-            float(r.transmission_rate)
-            for r in ts_rows
-            if r.upstream_pct is not None and r.upstream_pct <= 0
-            and r.transmission_rate is not None
-        ]
+    up_samples: list[float] = []
+    down_samples: list[float] = []
+    for row in ts_rows:
+        up_pct = _to_float(row.upstream_pct)
+        tr = _to_float(row.transmission_rate)
+        if up_pct is None or tr is None:
+            continue
+        if up_pct > 0:
+            up_samples.append(tr)
+        elif up_pct < 0:
+            down_samples.append(tr)
 
-        return StatSnapshotAsymmetryResponse(
-            anomaly_id=anomaly_id,
-            metric="asymmetry",
-            model_type=asym.model_type if asym else None,
-            up_samples=up_samples,
-            down_samples=down_samples,
-            alpha_plus=float(asym.alpha_plus) if asym and asym.alpha_plus is not None else None,
-            alpha_minus=float(asym.alpha_minus) if asym and asym.alpha_minus is not None else None,
-            wald_pvalue=float(asym.wald_pvalue) if asym and asym.wald_pvalue is not None else None,
-            asymmetry_significant=bool(asym.asymmetry_significant) if asym else None,
-        )
-    except APIError:
-        raise
-    except Exception as exc:
-        raise APIError(
-            "API-INT-001", "내부 예외 처리 실패",
-            context={"anomaly_id": anomaly_id}, http_status=500, public_code="INTERNAL_ERROR",
-        ) from exc
+    return StatSnapshotAsymmetryResponse(
+        anomaly_id=anomaly.id,
+        metric="asymmetry",
+        model_type=asymmetry.model_type if asymmetry else None,
+        up_samples=up_samples,
+        down_samples=down_samples,
+        alpha_plus=_to_float(asymmetry.alpha_plus) if asymmetry else None,
+        alpha_minus=_to_float(asymmetry.alpha_minus) if asymmetry else None,
+        wald_pvalue=_to_float(asymmetry.wald_pvalue) if asymmetry else None,
+        asymmetry_significant=asymmetry.asymmetry_significant if asymmetry else None,
+    )
 
-
-# ── 4. /irf ──────────────────────────────────────────────────────────────────
 
 async def get_irf(
+    db: AsyncSession,
     anomaly_id: int,
     include_subperiods: bool,
-    session: AsyncSession,
 ) -> IRFResponse:
-    """IRF 차트 데이터 (전체 기간 + 하위 기간별)."""
-    try:
-        anomaly = await _fetch_anomaly(anomaly_id, session)
+    """GET /anomalies/{id}/irf — 전체 기간 + 하위 기간별 IRF 곡선.
 
-        # irf_data 전체 조회 (subperiod_id IS NULL = 전체 기간, NOT NULL = 하위 기간)
-        stmt = select(IRFData).where(
+    scope 생성 규칙:
+    - subperiod_id IS NULL → scope='full'
+    - subperiod_id NOT NULL → scope='subperiod', subperiods 테이블 JOIN으로 label 생성.
+    """
+    anomaly, _ = await _get_anomaly_and_segment(db, anomaly_id)
+
+    # 전체 irf_data 조회 (subperiod_id NULL + NOT NULL)
+    stmt = (
+        select(IRFData)
+        .where(
             IRFData.commodity_id == anomaly.commodity_id,
             IRFData.segment_id == anomaly.segment_id,
-        ).order_by(IRFData.subperiod_id.nullsfirst(), IRFData.horizon)
+        )
+        .order_by(IRFData.subperiod_id.asc().nullsfirst(), IRFData.horizon)
+    )
+    if not include_subperiods:
+        stmt = stmt.where(IRFData.subperiod_id.is_(None))
 
-        if not include_subperiods:
-            stmt = stmt.where(IRFData.subperiod_id.is_(None))
+    all_irf: list[IRFData] = list((await db.execute(stmt)).scalars().all())
 
-        irf_result = await session.execute(stmt)
-        irf_rows = irf_result.scalars().all()
+    # subperiod_id 목록 수집 → subperiods 테이블 조회
+    subperiod_ids = {r.subperiod_id for r in all_irf if r.subperiod_id is not None}
+    subperiods_map: dict[int, Subperiod] = {}
+    if subperiod_ids:
+        sp_rows = (
+            await db.execute(
+                select(Subperiod).where(Subperiod.id.in_(subperiod_ids))
+            )
+        ).scalars().all()
+        subperiods_map = {sp.id: sp for sp in sp_rows}
 
-        # subperiod_id → Subperiod 매핑 (label·기간 생성용)
-        subperiod_map: dict[int, Subperiod] = {}
-        if include_subperiods:
-            sp_ids = {r.subperiod_id for r in irf_rows if r.subperiod_id is not None}
-            for sp_id in sp_ids:
-                sp = await session.get(Subperiod, sp_id)
-                if sp:
-                    subperiod_map[sp_id] = sp
+    # baselines (전체 기간) — estimation_start/end 출처
+    baseline = (
+        await db.execute(
+            select(Baseline).where(
+                Baseline.commodity_id == anomaly.commodity_id,
+                Baseline.segment_id == anomaly.segment_id,
+                Baseline.subperiod_id.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
 
-        # subperiod_id 별로 그룹핑
-        from collections import defaultdict
-        groups: dict[int | None, list[IRFData]] = defaultdict(list)
-        for row in irf_rows:
-            groups[row.subperiod_id].append(row)
+    # IRFData를 scope 단위로 그룹화 (subperiod_id 기준)
+    def sp_key(r: IRFData) -> int | None:
+        return r.subperiod_id
 
-        curves: list[IRFCurve] = []
+    sorted_irf = sorted(all_irf, key=lambda r: (r.subperiod_id is not None, r.subperiod_id or 0, r.horizon))
 
-        # 전체 기간 (subperiod_id IS NULL)
-        full_rows = groups.get(None, [])
-        if full_rows:
-            peak_row = next((r for r in full_rows if r.horizon == 0), full_rows[0])
+    curves: list[IRFCurve] = []
+    grouped: dict[int | None, list[IRFData]] = {}
+    for row in sorted_irf:
+        grouped.setdefault(row.subperiod_id, []).append(row)
+
+    for sp_id, irf_rows in grouped.items():
+        # peak from horizon=0 row
+        peak_row = next((r for r in irf_rows if r.horizon == 0), None)
+        peak_horizon = peak_row.irf_peak_horizon if peak_row else None
+        peak_magnitude = _to_float(peak_row.irf_peak_magnitude) if peak_row else None
+
+        data_points = [
+            IRFDataPoint(
+                horizon=r.horizon,
+                irf_downstream=_to_float(r.irf_downstream),
+                irf_lower_ci=_to_float(r.irf_lower_ci),
+                irf_upper_ci=_to_float(r.irf_upper_ci),
+            )
+            for r in irf_rows
+        ]
+
+        if sp_id is None:
+            # 전체 기간
+            est_start = _to_yyyymm(baseline.estimation_start) if baseline else None
+            est_end = _to_yyyymm(baseline.estimation_end) if baseline else None
             curves.append(IRFCurve(
                 scope="full",
                 label="전체 기간",
-                estimation_start=None,
-                estimation_end=None,
-                peak_horizon=int(peak_row.irf_peak_horizon) if peak_row.irf_peak_horizon is not None else None,
-                peak_magnitude=float(peak_row.irf_peak_magnitude) if peak_row.irf_peak_magnitude is not None else None,
-                data=[
-                    IRFDataPoint(
-                        horizon=r.horizon,
-                        irf_downstream=float(r.irf_downstream),
-                        irf_lower_ci=float(r.irf_lower_ci) if r.irf_lower_ci is not None else None,
-                        irf_upper_ci=float(r.irf_upper_ci) if r.irf_upper_ci is not None else None,
-                    )
-                    for r in sorted(full_rows, key=lambda x: x.horizon)
-                ],
+                estimation_start=est_start,
+                estimation_end=est_end,
+                peak_horizon=peak_horizon,
+                peak_magnitude=peak_magnitude,
+                data=data_points,
             ))
+        else:
+            sp = subperiods_map.get(sp_id)
+            if sp:
+                label = (
+                    f"{sp.period_start.strftime('%Y-%m')} ~ "
+                    f"{sp.period_end.strftime('%Y-%m')}"
+                )
+                est_start = sp.period_start.strftime("%Y-%m")
+                est_end = sp.period_end.strftime("%Y-%m")
+                curves.append(IRFCurve(
+                    scope="subperiod",
+                    subperiod_index=sp.subperiod_index,
+                    label=label,
+                    estimation_start=est_start,
+                    estimation_end=est_end,
+                    peak_horizon=peak_horizon,
+                    peak_magnitude=peak_magnitude,
+                    data=data_points,
+                ))
 
-        # 하위 기간별
-        for sp_id, sp_rows in sorted(groups.items(), key=lambda x: (x[0] is None, x[0])):
-            if sp_id is None:
-                continue
-            sp = subperiod_map.get(sp_id)
-            peak_row = next((r for r in sp_rows if r.horizon == 0), sp_rows[0])
-            label = (
-                f"{_to_yyyymm(sp.period_start)} ~ {_to_yyyymm(sp.period_end)}"
-                if sp else f"하위 기간 {sp_id}"
-            )
-            curves.append(IRFCurve(
-                scope="subperiod",
-                label=label,
-                estimation_start=_to_yyyymm(sp.period_start) if sp else None,
-                estimation_end=_to_yyyymm(sp.period_end) if sp else None,
-                subperiod_index=int(sp.subperiod_index) if sp else None,
-                peak_horizon=int(peak_row.irf_peak_horizon) if peak_row.irf_peak_horizon is not None else None,
-                peak_magnitude=float(peak_row.irf_peak_magnitude) if peak_row.irf_peak_magnitude is not None else None,
-                data=[
-                    IRFDataPoint(
-                        horizon=r.horizon,
-                        irf_downstream=float(r.irf_downstream),
-                        irf_lower_ci=float(r.irf_lower_ci) if r.irf_lower_ci is not None else None,
-                        irf_upper_ci=float(r.irf_upper_ci) if r.irf_upper_ci is not None else None,
-                    )
-                    for r in sorted(sp_rows, key=lambda x: x.horizon)
-                ],
-            ))
+    return IRFResponse(
+        commodity_id=anomaly.commodity_id,
+        segment_id=anomaly.segment_id,
+        irfs=curves,
+    )
 
-        return IRFResponse(
-            commodity_id=anomaly.commodity_id,
-            segment_id=anomaly.segment_id,
-            irfs=curves,
-        )
-    except APIError:
-        raise
-    except Exception as exc:
-        raise APIError(
-            "API-INT-001", "내부 예외 처리 실패",
-            context={"anomaly_id": anomaly_id}, http_status=500, public_code="INTERNAL_ERROR",
-        ) from exc
-
-
-# ── 5. /ml-map ───────────────────────────────────────────────────────────────
 
 async def get_ml_map(
+    db: AsyncSession,
     anomaly_id: int,
-    model: Literal["isolation_forest", "lof", "ocsvm"],
-    projection_method: Literal["pca", "feature_direct"],
-    session: AsyncSession,
+    model: str,
+    projection_method: str,
 ) -> MLMapResponse:
-    """ML 결과맵 2D 투영 데이터 (api_spec_vN §ml-map)."""
-    try:
-        anomaly = await _fetch_anomaly(anomaly_id, session)
+    """GET /anomalies/{id}/ml-map — ML 결과맵 2D 투영 데이터.
 
-        result = await session.execute(
-            select(MLProjection).where(
-                MLProjection.commodity_id == anomaly.commodity_id,
-                MLProjection.segment_id == anomaly.segment_id,
-                MLProjection.model_name == model,
-                MLProjection.projection_method == projection_method,
-            ).order_by(MLProjection.period)
-        )
-        proj_rows = result.scalars().all()
+    ml_projections 미산출 시 → 404 ML_MAP_NOT_READY (API-ANO-003).
+    is_highlight: DB 값 우선, NULL이면 anomaly.period 와 일치 여부로 대체.
+    """
+    anomaly, _ = await _get_anomaly_and_segment(db, anomaly_id)
 
-        if not proj_rows:
-            raise APIError(
-                "API-ANO-003",
-                "ML 투영 데이터가 아직 산출되지 않았습니다.",
-                context={"anomaly_id": anomaly_id, "model": model},
-                http_status=404,
-                public_code="ML_MAP_NOT_READY",
+    proj_rows: list[MLProjection] = list(
+        (
+            await db.execute(
+                select(MLProjection)
+                .where(
+                    MLProjection.commodity_id == anomaly.commodity_id,
+                    MLProjection.segment_id == anomaly.segment_id,
+                    MLProjection.model_name == model,
+                    MLProjection.projection_method == projection_method,
+                )
+                .order_by(MLProjection.period)
             )
-
-        x_label = proj_rows[0].x_label or "PC1"
-        y_label = proj_rows[0].y_label or "PC2"
-
-        points = [
-            MLMapPoint(
-                period=_to_yyyymm(r.period),
-                x_value=float(r.x_value),
-                y_value=float(r.y_value),
-                anomaly_score=float(r.anomaly_score) if r.anomaly_score is not None else None,
-                is_anomaly=bool(r.is_anomaly) if r.is_anomaly is not None else False,
-                is_highlight=(r.period == anomaly.period),  # 해당 이상 탐지 월 강조
-            )
-            for r in proj_rows
-        ]
-
-        return MLMapResponse(
-            anomaly_id=anomaly_id,
-            commodity_id=anomaly.commodity_id,
-            segment_id=anomaly.segment_id,
-            model=model,
-            projection_method=projection_method,
-            x_label=x_label,
-            y_label=y_label,
-            total_points=len(points),
-            points=points,
         )
-    except APIError:
-        raise
-    except Exception as exc:
+        .scalars()
+        .all()
+    )
+
+    if not proj_rows:
         raise APIError(
-            "API-INT-001", "내부 예외 처리 실패",
-            context={"anomaly_id": anomaly_id}, http_status=500, public_code="INTERNAL_ERROR",
-        ) from exc
+            "API-ANO-003",
+            "ML 결과맵 데이터가 아직 산출되지 않았습니다.",
+            context={
+                "anomaly_id": anomaly_id,
+                "model": model,
+                "projection_method": projection_method,
+            },
+            http_status=404,
+            public_code="ML_MAP_NOT_READY",
+        )
+
+    anomaly_period = anomaly.period
+    x_label = proj_rows[0].x_label or "PC1"
+    y_label = proj_rows[0].y_label or "PC2"
+
+    points: list[MLMapPoint] = []
+    for row in proj_rows:
+        is_highlight = (
+            bool(row.is_highlight)
+            if row.is_highlight is not None
+            else (row.period == anomaly_period)
+        )
+        points.append(MLMapPoint(
+            period=row.period.strftime("%Y-%m"),
+            x_value=_to_float(row.x_value),
+            y_value=_to_float(row.y_value),
+            anomaly_score=_to_float(row.anomaly_score),
+            is_anomaly=bool(row.is_anomaly) if row.is_anomaly is not None else False,
+            is_highlight=is_highlight,
+        ))
+
+    return MLMapResponse(
+        anomaly_id=anomaly.id,
+        commodity_id=anomaly.commodity_id,
+        segment_id=anomaly.segment_id,
+        model=model,
+        projection_method=projection_method,
+        x_label=x_label,
+        y_label=y_label,
+        total_points=len(points),
+        points=points,
+    )

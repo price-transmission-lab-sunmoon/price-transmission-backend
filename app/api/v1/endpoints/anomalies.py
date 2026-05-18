@@ -3,12 +3,16 @@
 """
 from __future__ import annotations
 
+import logging
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import ValidationError
 
-from app.api.deps import get_db
+from app.api.deps import get_redis
+from app.cache.redis import cache_delete, cache_get, cache_set
+from app.core.config import settings
+from app.core.exceptions import APIError
 from app.schemas.anomaly import (
     AnomalyDetailResponse,
     AnomalySummaryResponse,
@@ -23,6 +27,9 @@ from app.schemas.panel import (
 from app.schemas.timeseries import StatSeriesResponse
 from app.services import anomaly_panel
 
+import redis.asyncio as aioredis
+
+logger = logging.getLogger("app")
 router = APIRouter()
 
 # iq r·asymmetry 를 포함한 전체 허용 목록 — 서비스에서 SNAPSHOT_METRIC_ON_SERIES 분기
@@ -69,24 +76,55 @@ async def get_anomaly_detail(
 @router.get("/anomalies/{anomaly_id}/stat-series", response_model=StatSeriesResponse)
 async def get_stat_series(
     anomaly_id: int,
-    metric: Annotated[_StatSeriesMetric, Query(description="지표 종류")] = "transmission_rate",
-    from_: Annotated[
-        str | None, Query(alias="from", description="조회 시작 월 (YYYY-MM)")
-    ] = None,
+    metric: Annotated[_STAT_SERIES_METRICS, Query(description="지표 종류")] = "transmission_rate",
+    from_: Annotated[str | None, Query(alias="from", description="조회 시작 월 (YYYY-MM)")] = None,
     to: Annotated[str | None, Query(description="조회 종료 월 (YYYY-MM)")] = None,
-    granularity: Annotated[
-        Literal["monthly", "quarterly", "yearly"],
-        Query(description="집계 단위"),
-    ] = "monthly",
-    db: AsyncSession = Depends(get_db),
+    granularity: Annotated[str, Query(description="집계 단위 (monthly/quarterly/yearly)")] = "monthly",
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> StatSeriesResponse:
-    """지표별 인라인 시계열 (api_spec_vN §stat-series).
+    """지표별 인라인 시계열 — Redis TTL 캐싱 적용 (feature_spec_BE-REDIS_v2 §3.3).
 
     - metric=iqr·asymmetry → SNAPSHOT_METRIC_ON_SERIES 400
     - from > to → INVALID_DATE_RANGE 400
     예외: API-MET-001, API-MET-002, API-STR-002, API-ANO-001, API-INT-001
     """
-    return await anomaly_panel.get_stat_series(
+    # 캐시 키: {prefix}:stat-series:{anomaly_id}:{from}:{to}:{granularity}
+    # metric도 포함하여 지표별 캐시 분리
+    cache_key = (
+        f"{settings.redis_cache_prefix}:stat-series:"
+        f"{anomaly_id}:{metric}:{from_ or 'default'}:{to or 'default'}:{granularity}"
+    )
+
+    # ── Cache HIT 경로 ──────────────────────────────────────────────────────
+    cached = await cache_get(redis, cache_key)
+    if cached is not None:
+        try:
+            result = StatSeriesResponse.model_validate(cached)
+            logger.info(
+                "cache=hit",
+                extra={"error_code": "CACHE", "context": {"cache_key": cache_key}},
+            )
+            return result
+        except ValidationError as e:
+            # PARSE-REDIS-001: API 레이어에서 Pydantic 검증 실패
+            logger.warning(
+                "Redis 캐시값 Pydantic 검증 실패 — 캐시 무효화 후 DB 재조회 (PARSE-REDIS-001)",
+                extra={
+                    "error_code": "PARSE-REDIS-001",
+                    "context": {
+                        "cache_key": cache_key,
+                        "error_msg": str(e),
+                    },
+                },
+            )
+            await cache_delete(redis, cache_key)
+
+    # ── Cache MISS 경로 — 서비스 조회 후 캐시 적재 ──────────────────────────
+    logger.info(
+        "cache=miss",
+        extra={"error_code": "CACHE", "context": {"cache_key": cache_key}},
+    )
+    result = StatSeriesResponse(
         anomaly_id=anomaly_id,
         metric=metric,
         from_str=from_,
@@ -94,6 +132,8 @@ async def get_stat_series(
         granularity=granularity,
         session=db,
     )
+    await cache_set(redis, cache_key, result.model_dump(mode="json"), ttl=settings.redis_ttl)
+    return result
 
 
 @router.get("/anomalies/{anomaly_id}/stat-snapshot")

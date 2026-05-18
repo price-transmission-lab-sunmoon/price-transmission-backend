@@ -163,3 +163,27 @@ class StatSeriesResponse(TimeseriesEnvelope):
     metric: str
     highlight_period: str
     data: list[StatSeriesPoint]
+
+
+# ── 미니맵 공통 ───────────────────────────────────────────────────────────────
+
+class AnomalyDensityPoint(BaseModel):
+    """연도별 이상 밀도 포인트 (mv_anomaly_density_yearly 기준)."""
+    period: str          # 연도 문자열 "2022"
+    high_count: int
+    medium_count: int
+    reference_count: int
+
+
+# ── /stream/minimap ────────────────────────────────────────────────────────────
+
+class StreamMinimapResponse(StreamResponse):
+    """스트림 미니맵 응답 — StreamResponse + anomaly_density (api_spec_vN §stream/minimap)."""
+    anomaly_density: list[AnomalyDensityPoint] = []
+
+
+# ── /raw-prices/minimap ───────────────────────────────────────────────────────
+
+class RawPricesMinimapResponse(RawPricesResponse):
+    """원시 시계열 미니맵 응답 — RawPricesResponse + anomaly_density (api_spec_vN §raw-prices/minimap)."""
+    anomaly_density: list[AnomalyDensityPoint] = []
