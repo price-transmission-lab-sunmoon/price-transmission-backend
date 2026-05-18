@@ -5,7 +5,10 @@ APP_ENV=development 이므로 DB/Redis 미연결 시 WARN 후 기동.
 """
 from __future__ import annotations
 
+import json
 import os
+from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -14,7 +17,18 @@ os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://user:pass@localhost:
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("APP_ENV", "development")
 
+from app.api.deps import get_db  # noqa: E402
 from app.main import app  # noqa: E402
+from app.schemas.commodity import CommodityListResponse, CommoditySummary  # noqa: E402
+
+_FIXTURE = json.loads(
+    (Path(__file__).parent / "fixtures" / "reference_dummy.json").read_text(encoding="utf-8")
+)
+
+
+async def _override_get_db():
+    yield AsyncMock()
+
 
 # ── Test 1: 앱 기동 + /meta/config 응답 ──────────────────────────────────────
 
@@ -36,13 +50,41 @@ ALLOWED_ROUTE_TYPES = {"3seg", "4seg"}
 
 @pytest.mark.asyncio
 async def test_commodities_dummy():
-    """/commodities 10개 품목 배열 + 필드·Literal 값 검증 (frame_spec §7.4 #2)."""
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        resp = await ac.get("/api/v1/commodities")
+    """/commodities 10개 품목 배열 + 필드·Literal 값 검증 (frame_spec §7.4 #2).
+
+    feat/be-api-reference 머지 이후 실 DB 쿼리로 전환됐으므로 서비스 레이어를 mock 처리.
+    """
+    items = [
+        CommoditySummary(
+            commodity_id=c["commodity_id"],
+            name_kr=c["name_kr"],
+            name_en=c["name_en"],
+            cluster=c["cluster"],
+            has_wholesale=c["has_wholesale"],
+            route_type=c["route_type"],
+            segments=c["segments"],
+            analysis_start=c["analysis_start"],
+            analysis_end=c["analysis_end"],
+            has_anomaly_this_month=c["has_anomaly_this_month"],
+            latest_anomaly_grade=c["latest_anomaly_grade"],
+        )
+        for c in _FIXTURE["GET /api/v1/commodities"]["commodities"]
+    ]
+    mock_response = CommodityListResponse(commodities=items)
+
+    app.dependency_overrides[get_db] = _override_get_db
+    try:
+        with patch("app.services.reference.get_commodities", new_callable=AsyncMock) as mock_svc:
+            mock_svc.return_value = mock_response
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+                resp = await ac.get("/api/v1/commodities")
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
     assert resp.status_code == 200
-    items = resp.json()["commodities"]
-    assert len(items) == 10, f"품목 수 불일치: {len(items)}"
-    for c in items:
+    items_resp = resp.json()["commodities"]
+    assert len(items_resp) == 10, f"품목 수 불일치: {len(items_resp)}"
+    for c in items_resp:
         for key in ("commodity_id", "cluster", "route_type", "segments"):
             assert key in c, f"'{key}' 키 없음: {c}"
         assert c["cluster"] in ALLOWED_CLUSTERS, f"허용되지 않은 cluster: {c['cluster']}"
