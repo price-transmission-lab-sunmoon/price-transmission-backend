@@ -1,0 +1,34 @@
+{
+  "version": "v8",
+  "params": {
+    "rolling_window": 48,
+    "zscore_warning": 2.0,
+    "zscore_alert": 2.5,
+    "iqr_multiplier": 1.5,
+    "stability_threshold": 0.03,
+    "pattern3_n_values": [2, 3, 6],
+    "min_subperiod_obs": 60,
+    "lag_search_range": [1, 4],
+    "chow_test_points": ["2008-01", "2020-01", "2022-01"]
+  },
+  "patterns": [
+    {
+      "pattern_id": "pattern1",
+      "label_kr": "패턴 1: 방향 역전 및 시차 이탈",
+      "description": "국제 원자재 가격이 변동할 때 다음 단계 가격이 반대 방향으로 움직이거나, 정상 전달 시차(IRF 피크 시점 + 버퍼 1개월)를 초과해도 하류가 무반응인 경우",
+      "applicable_segments": ["A", "B", "C", "D", "D_prime"]
+    },
+    {
+      "pattern_id": "pattern2",
+      "label_kr": "패턴 2: 전이율 크기 이탈 및 비대칭 전달(로켓-깃털 효과)",
+      "description": "전이율이 롤링 Z-score와 IQR 기준을 동시 초과하거나, TECM/비대칭 VAR에서 상승·하락 조정 속도가 유의미하게 다른 경우",
+      "applicable_segments": ["A", "B"]
+    },
+    {
+      "pattern_id": "pattern3",
+      "label_kr": "패턴 3: 국제가격 안정기 중 하류 물가 스프레드 누적 확대",
+      "description": "국제가 안정기(원화 환산 월 변동 ±3% 이내)에 수입단가-PPI 간 수준 괴리가 N개월 연속 같은 방향으로 확대되는 경우",
+      "applicable_segments": ["B"]
+    }
+  ]
+}

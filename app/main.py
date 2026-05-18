@@ -67,7 +67,21 @@ async def lifespan(app: FastAPI):
         )
         raise ConfigError("CFG-CORE-001", "Redis 연결 실패")
 
+    # ── APScheduler 시작 (feat/be-batch) ──────────────────────────────────────
+    from app.services.batch import init_scheduler
+
+    _scheduler = init_scheduler()
+    _scheduler.start()
+    logger.info(
+        "APScheduler 시작 — 월별 배치 스케줄 등록",
+        extra={"error_code": "BOOT", "context": {}},
+    )
+
     yield
+
+    # ── APScheduler 종료 ──────────────────────────────────────────────────────
+    _scheduler.shutdown(wait=False)
+    logger.info("APScheduler 종료", extra={"error_code": "BOOT", "context": {}})
 
     # ── 종료 ──────────────────────────────────────────────────────────────────
     await close_redis()

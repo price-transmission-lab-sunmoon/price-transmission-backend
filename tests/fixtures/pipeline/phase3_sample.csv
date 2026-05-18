@@ -1,0 +1,8 @@
+commodity_id,segment,upstream,downstream,n_obs,var_lag_aic,var_lag_bic,johansen_lag,trace_stat_r0,trace_crit_r0,trace_reject_r0,eigen_stat_r0,eigen_crit_r0,eigen_reject_r0,cointegrated,judgment_note,model_selected,integration_flag
+wheat,A,intl_price_krw,import_price_usd,300,4,3,3,28.4512,15.4947,True,22.3412,14.2646,True,True,Trace·Max-Eigen 모두 기각 → 공적분 확정,VECM,
+wheat,B,import_price_usd,ppi,300,4,3,3,19.8923,15.4947,True,18.1234,14.2646,True,True,Trace·Max-Eigen 모두 기각 → 공적분 확정,VECM,
+wheat,D_prime,ppi,cpi,300,4,3,3,21.3412,15.4947,True,19.8123,14.2646,True,True,Trace·Max-Eigen 모두 기각 → 공적분 확정,VECM,
+banana,A,intl_price_krw,import_price_usd,264,2,2,1,26.1234,15.4947,True,20.5678,14.2646,True,True,Trace·Max-Eigen 모두 기각 → 공적분 확정,VECM,
+banana,B,import_price_usd,ppi,264,3,2,2,10.2341,15.4947,False,9.8712,14.2646,False,False,Trace·Max-Eigen 모두 미기각 → 공적분 없음,VAR,
+banana,C,ppi,wholesale_price,264,2,2,1,9.1234,15.4947,False,8.9012,14.2646,False,False,Trace·Max-Eigen 모두 미기각 → 공적분 없음,VAR,I(2) 포함 (wholesale_price)
+banana,D,wholesale_price,cpi,264,2,2,1,11.3412,15.4947,False,10.2341,14.2646,False,False,Trace·Max-Eigen 모두 미기각 → 공적분 없음,VAR,
