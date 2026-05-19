@@ -40,3 +40,11 @@ htmlcov/
 
 # macOS
 .DS_Store
+
+# 파이프라인 생성 데이터 (배치 실행 산출물 — 커밋 불필요)
+data/processed/**/*.csv
+data/processed/**/*.json
+data/processed/**/*.parquet
+data/raw/**/*
+!data/processed/**/.gitkeep
+!data/raw/**/.gitkeep

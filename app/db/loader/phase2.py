@@ -36,7 +36,21 @@ async def load_stationarity_results(
             {"path": str(csv_path), "run_id": run_id},
         )
 
-    df = pd.read_csv(csv_path)
+    try:
+        df = pd.read_csv(csv_path)
+    except pd.errors.EmptyDataError:
+        logger.warning("Phase 2 stationarity_results.csv 비어있음 — 적재 건너뜀", extra={"run_id": run_id})
+        return 0
+    except Exception as e:
+        raise DBError(
+            "DB-TX-001",
+            f"Phase 2 CSV 읽기 실패: {csv_path}",
+            {"path": str(csv_path), "run_id": run_id, "error": str(e)},
+        ) from e
+
+    if df.empty or "integration_order" not in df.columns:
+        logger.warning("Phase 2 stationarity_results.csv 유효 데이터 없음 — 적재 건너뜀", extra={"run_id": run_id})
+        return 0
 
     # i2_flag 는 pipeline_output_spec 표에 없음 — integration_order == 2 로 파생
     if "i2_flag" not in df.columns:

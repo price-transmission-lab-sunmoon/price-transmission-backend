@@ -59,7 +59,22 @@ async def load_cointegration_results(
             {"path": str(csv_path), "run_id": run_id},
         )
 
-    df = pd.read_csv(csv_path)
+    try:
+        df = pd.read_csv(csv_path)
+    except pd.errors.EmptyDataError:
+        logger.warning("Phase 3 cointegration_results.csv 비어있음 — 적재 건너뜀", extra={"run_id": run_id})
+        return 0
+    except Exception as e:
+        raise DBError(
+            "DB-TX-001",
+            f"Phase 3 CSV 읽기 실패: {csv_path}",
+            {"path": str(csv_path), "run_id": run_id, "error": str(e)},
+        ) from e
+
+    if df.empty:
+        logger.warning("Phase 3 cointegration_results.csv 유효 데이터 없음 — 적재 건너뜀", extra={"run_id": run_id})
+        return 0
+
     int_orders = await _fetch_integration_orders(session)
 
     try:
