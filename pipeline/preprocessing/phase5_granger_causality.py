@@ -329,10 +329,19 @@ def run_phase5(
     print("Phase 5 — Granger 인과 방향 확정 결과")
     print("=" * 70)
 
+    if not all_results:
+        print("  결과 없음 (입력 데이터 부재)")
+        print("=" * 70)
+        return results_df, granger_direction
+
     for cid in targets:
         rows = [r for r in all_results if r["commodity_id"] == cid]
-        ppi_row = [r for r in rows if r["direction"] == "ppi_to_wholesale"][0]
-        ws_row = [r for r in rows if r["direction"] == "wholesale_to_ppi"][0]
+        if not rows:
+            continue
+        ppi_row = next((r for r in rows if r["direction"] == "ppi_to_wholesale"), None)
+        ws_row = next((r for r in rows if r["direction"] == "wholesale_to_ppi"), None)
+        if ppi_row is None or ws_row is None:
+            continue
         confirmed = rows[0]["confirmed_direction"]
 
         print(f"\n[{cid}] 구간 C (PPI ↔ 도매가)")

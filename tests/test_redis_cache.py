@@ -126,7 +126,12 @@ async def test_cache_delete_pattern_removes_matching_keys():
 async def test_cache_delete_pattern_connection_error_returns_zero(caplog):
     """삭제 중 연결 실패(DB-CACHE-001) 시 WARN + 0 반환."""
     client = AsyncMock()
-    client.scan_iter.side_effect = ConnectionError("Redis down")
+
+    async def mock_scan_iter_raise(match, count):
+        raise ConnectionError("Redis down")
+        yield  # noqa: unreachable — async generator 마커
+
+    client.scan_iter = mock_scan_iter_raise
     with caplog.at_level("WARNING"):
         count = await cache_delete_pattern(client, "pricelens:stream:*")
     assert count == 0

@@ -395,7 +395,12 @@ def run_phase4(sa_dir: str = SA_DIR,
     print(f"  요약 리포트:   {summary_path}")
     print(f"{'─' * 60}")
 
-    # 통계
+    # 통계 — 빈 결과 방어
+    if summary_df.empty:
+        print("  결과 없음 (입력 데이터 부재)")
+        print(f"{'=' * 60}")
+        return summary_df
+
     success = summary_df[summary_df["peak_horizon"].notna()]
     vecm_n = len(success[success["model_type"] == "VECM"])
     var_n = len(success[success["model_type"] == "VAR"])

@@ -280,6 +280,11 @@ def run_phase3(sa_dir: str = SA_DIR,
     print(f"{'─' * 60}")
 
     total = len(results_df)
+    if total == 0:
+        print("  결과 없음 (입력 데이터 부재)")
+        print(f"{'=' * 60}")
+        return results_df, model_selection
+
     vecm_count = len(results_df[results_df["model_selected"] == "VECM"])
     var_count = len(results_df[results_df["model_selected"] == "VAR"])
     flagged = len(results_df[results_df["integration_flag"].notna()])

@@ -272,8 +272,13 @@ def run_phase2(sa_dir: str = SA_DIR,
     print(f"  적분 차수:     {orders_path}")
     print(f"{'─' * 60}")
 
-    # 요약 통계
+    # 요약 통계 — 빈 결과 방어
     total = len(results_df)
+    if total == 0:
+        print("  결과 없음 (입력 데이터 부재)")
+        print(f"{'=' * 60}")
+        return results_df, integration_orders
+
     i0_level = len(results_df[results_df["integration_order"] == 0])
     i1 = len(results_df[results_df["integration_order"] == 1])
     i2 = len(results_df[results_df["integration_order"] == 2])
