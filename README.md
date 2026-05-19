@@ -11,7 +11,6 @@
 | `main` | 안정 브랜치 |
 | `backend/merge_all` | 백엔드 전체 기능 통합 브랜치 (현재 최신) |
 | `feat/be-*` | 기능별 개발 브랜치 (병합 완료) |
-| `feat/pipeline-*` | 파이프라인 목업 → 실데이터 교체 브랜치 (진행 예정) |
 
 ---
 
@@ -27,9 +26,7 @@ pip install -r requirements.txt
 
 # 2. 환경 변수 설정 (.env 파일 생성)
 cp .env.example .env
-# .env 에서 아래 두 항목 필수 설정:
-#   DATABASE_URL=postgresql+asyncpg://<user>:<pass>@<host>:5432/<db>
-#   REDIS_URL=redis://localhost:6379/0
+# .env 에서 필수 항목 설정 (아래 변수 목록 참조)
 ```
 
 ### .env 전체 변수 목록
@@ -44,9 +41,8 @@ APP_ENV=development          # development | production
 LOG_LEVEL=INFO               # DEBUG | INFO | WARNING | ERROR
 CORS_ALLOWED_ORIGINS=http://localhost:5173
 
-# 파이프라인 적재
+# 파이프라인 데이터 경로
 PIPELINE_DATA_ROOT=data/processed   # 파이프라인 CSV/JSON 출력 루트
-DB_POOL_SIZE=10
 
 # 배치 스케줄
 BATCH_SCHEDULE_DAY=15        # 매월 몇 일 실행
@@ -56,6 +52,12 @@ BATCH_SCHEDULE_TZ=Asia/Seoul
 # Redis 캐싱
 REDIS_TTL=3600
 REDIS_CACHE_PREFIX=pricelens
+
+# Phase 0 데이터 수집 API 키 (데이터 수집 시 필요)
+ECOS_API_KEY=                # 한국은행 ECOS Open API
+EXIM_API_KEY=                # 관세청 수출입 무역통계
+KAMIS_CERT_KEY=              # KAMIS 농산물유통정보
+KAMIS_CERT_ID=
 ```
 
 > **`APP_ENV=development`** 시: PostgreSQL·Redis 연결 실패해도 서버 기동 (WARN 로그만 출력).  
@@ -82,6 +84,166 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
 
 ---
 
+## 파이프라인 실행
+
+월별 배치(`/api/v1/admin/batch/trigger`)는 내부적으로 Phase 0~6을 순서대로 실행합니다.  
+각 Phase를 단독으로 실행하려면 아래 명령어를 사용합니다.
+
+### Phase 0 — 데이터 수집 및 전처리
+
+원시 데이터를 수집하고 `data/processed/merged/` 에 통합 CSV를 생성합니다.  
+API 키(ECOS, EXIM, KAMIS)가 `.env` 에 설정되어 있어야 합니다.
+
+```bash
+python -m pipeline.preprocessing.run_phase0
+```
+
+**출력 경로:**
+
+```
+data/processed/
+├── worldbank_prices_krw.csv          # 원화 환산 국제가
+├── common_periods.csv                # 공통 분석 기간
+├── missing_value_report.csv          # 결측치 리포트
+├── product_config.json               # 품목별 분석 설정
+└── merged/
+    ├── all_commodities.csv           # 전체 통합 데이터셋
+    └── {commodity_id}.csv            # 품목별 개별 파일
+```
+
+### Phase 1 — 계절 조정 (STL)
+
+```bash
+python -m pipeline.preprocessing.phase1_seasonal_adjustment
+```
+
+**출력 경로:**
+
+```
+data/processed/phase1/
+├── seasonal_adjusted/{cid}_sa.csv    # 계절 조정 시계열 (수준)
+├── changes/{cid}_changes.csv         # 전월 대비 변화율 (%)
+├── stl_components/{cid}_stl.csv      # STL 분해 성분
+└── phase1_summary.csv
+```
+
+### Phase 2 — 정상성 검정 (ADF + KPSS)
+
+```bash
+python -m pipeline.preprocessing.phase2_stationarity_test
+```
+
+**출력 경로:**
+
+```
+data/processed/phase2/
+├── stationarity_results.csv          # 전체 검정 결과
+└── integration_orders.json           # 품목·컬럼별 적분 차수 (Phase 3 입력)
+```
+
+### Phase 3 — 공적분 검정 (Johansen)
+
+```bash
+python -m pipeline.preprocessing.phase3_cointegration_test
+```
+
+**출력 경로:**
+
+```
+data/processed/phase3/
+├── cointegration_results.csv         # 전체 검정 결과
+└── model_routing.json                # 구간별 모형 선택 (VAR/VECM)
+```
+
+### Phase 4 — 모형 추정 (VAR/VECM + IRF)
+
+```bash
+python -m pipeline.preprocessing.phase4_model_estimation
+```
+
+**출력 경로:**
+
+```
+data/processed/phase4/
+├── model_params/{cid}_{seg}_model.json
+├── irf/{cid}_{seg}_irf.csv
+├── baseline/{cid}_{seg}_baseline.json
+├── ect/{cid}_{seg}_ect.csv
+└── phase4_summary.csv
+```
+
+### Phase 5 — Granger 인과 방향 확정
+
+```bash
+python -m pipeline.preprocessing.phase5_granger_causality
+```
+
+**출력 경로:**
+
+```
+data/processed/phase5/
+├── granger_results.csv               # 검정 결과 (3품목 × 2방향)
+└── granger_direction.json            # 확정 방향
+```
+
+### Phase 6 — 구조 변화 탐지 (Bai-Perron)
+
+```bash
+python -m pipeline.preprocessing.phase6_structural_breaks
+```
+
+**출력 경로:**
+
+```
+data/processed/phase6/
+├── breakpoints/{cid}_{seg}_breakpoints.json
+├── chow_results/{cid}_{seg}_chow.csv
+├── subperiod_models/{cid}_{seg}_subperiod_{n}_model.json
+└── phase6_summary.csv
+```
+
+### Phase 2~6 DB 적재 (배치 수동 트리거)
+
+파이프라인 계산이 완료된 후 DB에 적재하려면:
+
+```bash
+# 서버 실행 후 수동 배치 트리거
+curl -X POST http://localhost:8000/api/v1/admin/batch/trigger
+
+# 또는 전체 파이프라인 계산 + 적재 일괄 실행
+curl -X POST http://localhost:8000/api/v1/admin/batch/trigger
+```
+
+### 전체 파이프라인 순차 실행
+
+```bash
+# Phase 0: 데이터 수집
+python -m pipeline.preprocessing.run_phase0
+
+# Phase 1: 계절 조정
+python -m pipeline.preprocessing.phase1_seasonal_adjustment
+
+# Phase 2: 정상성 검정
+python -m pipeline.preprocessing.phase2_stationarity_test
+
+# Phase 3: 공적분 검정
+python -m pipeline.preprocessing.phase3_cointegration_test
+
+# Phase 4: 모형 추정
+python -m pipeline.preprocessing.phase4_model_estimation
+
+# Phase 5: Granger 인과
+python -m pipeline.preprocessing.phase5_granger_causality
+
+# Phase 6: 구조 변화
+python -m pipeline.preprocessing.phase6_structural_breaks
+
+# DB 적재 (서버 실행 상태에서)
+curl -X POST http://localhost:8000/api/v1/admin/batch/trigger
+```
+
+---
+
 ## 주요 명령
 
 | 목적 | 명령 |
@@ -93,6 +255,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
 | 특정 테스트 파일 | `pytest tests/test_api_reference.py -v` |
 | 린트 | `ruff check .` |
 | 포맷 | `ruff format .` |
+| 수동 배치 트리거 | `curl -X POST http://localhost:8000/api/v1/admin/batch/trigger` |
+| pipeline_runs 상태 확인 | `psql -c "SELECT * FROM pipeline_runs ORDER BY id DESC LIMIT 5;"` |
 
 ---
 
@@ -164,13 +328,63 @@ app/
 │   ├── anomaly_summary.py   이상 요약 서비스
 │   ├── anomaly_panel.py     패널 서비스 (501 스텁)
 │   ├── meta.py              파이프라인 메타 서비스
-│   └── batch.py             APScheduler 월별 배치
+│   └── batch.py             APScheduler 월별 배치 + 파이프라인 실행
 └── cache/
     └── redis.py             Redis 클라이언트 + cache_get/set/delete 헬퍼
+
+pipeline/                    파이프라인 계산 코드 (price-transmission 리포 통합)
+├── __init__.py
+├── preprocessing/           Phase 0~6 계산 스크립트
+│   ├── run_phase0.py        데이터 수집 통합 실행기
+│   ├── step1~5_*.py         Phase 0 세부 단계 (수집·전처리)
+│   ├── phase1~6_*.py        Phase 1~6 계량경제 분석
+│   └── Phase7/              Phase 7 이상 탐지·ML (phase7-stat 완료 후 연결 예정)
+├── collectors/              원시 데이터 수집기 (ECOS, KAMIS, 세계은행 등)
+└── config/
+    ├── settings.py          파이프라인 파라미터 설정
+    └── commodity_mapping.json
+
+data/
+├── raw/                     원시 데이터 (수집기 출력, git 제외)
+└── processed/               파이프라인 중간·최종 산출물 (git 제외)
+    ├── product_config.json
+    ├── merged/
+    ├── phase1/ ~ phase6/
 
 alembic/                     DB 마이그레이션 (7개 revision)
 tests/                       pytest 테스트 (DB·Redis 없이 실행 가능)
 docs/                        명세 문서 (버전 관리: docs_manifest.md)
+```
+
+---
+
+## 배치 실행 흐름
+
+월별 배치(또는 수동 트리거)는 다음 순서로 실행됩니다:
+
+```
+Phase 0 → Phase 1 → Phase 2 (+DB 적재) → Phase 3 (+DB 적재)
+→ Phase 4 (+DB 적재) → Phase 5 (+DB 적재) → Phase 6 (+DB 적재)
+→ Phase 7 (미구현, skip) → Phase 7-ml (미구현, skip)
+→ data_freshness 갱신 → Redis 캐시 무효화
+```
+
+Phase 2~6은 계산 완료 직후 DB 적재가 이루어집니다.  
+Phase 7, 7-ml은 `phase7-stat` 구현 완료 후 연결됩니다.
+
+### 배치 완료 확인
+
+```bash
+# pipeline_runs 상태 확인
+psql -U user -d price_transmission -c \
+  "SELECT id, run_date, status, phases_run, finished_at FROM pipeline_runs ORDER BY id DESC LIMIT 5;"
+
+# data_freshness 갱신 확인
+psql -U user -d price_transmission -c \
+  "SELECT data_up_to, next_run_date, last_updated FROM data_freshness;"
+
+# Redis 캐시 무효화 후 응답 확인
+curl http://localhost:8000/api/v1/commodities/wheat/stream
 ```
 
 ---
@@ -203,56 +417,6 @@ pytest tests/ -v
 ORIGIN  [DB-CONN-002] SQLAlchemy async pool 고갈 | context: {pool_size=10, active=10}
         └─ [API-INT-001] 내부 예외 처리 실패
 ```
-
----
-
-## Pipeline 브랜치와 병합 방법
-
-현재 `backend/merge_all`은 파이프라인 DB 적재 로직이 **목업(더미 데이터)** 상태입니다.  
-`feat/pipeline-*` 브랜치에서 실제 파이프라인 출력 CSV/JSON을 읽어 DB에 적재하는 로직으로 교체합니다.
-
-### 교체 대상
-
-| 파일 | 현재 상태 | 교체 내용 |
-|---|---|---|
-| `app/services/batch.py` `_run_phase()` | 더미 로그만 출력 | `app/db/loader/runner.py`의 `run_pipeline()` 호출로 교체 |
-| `app/db/loader/phase2.py` | `stationarity_results.csv` 읽기 구현 완료 | 실 CSV 경로 확인 후 `PIPELINE_DATA_ROOT` 환경 변수 설정 |
-| `app/db/loader/phase3~6.py` | 각 Phase CSV/JSON 읽기 구현 완료 | 동일 |
-
-### 병합 절차
-
-```bash
-# 1. backend/merge_all 기준으로 파이프라인 브랜치 생성
-git checkout backend/merge_all
-git checkout -b feat/pipeline-real-data
-
-# 2. 파이프라인 출력 데이터를 PIPELINE_DATA_ROOT 경로에 배치
-#    기본값: data/processed/
-#    - data/processed/phase2/stationarity_results.csv
-#    - data/processed/phase3/cointegration_results.csv
-#    - data/processed/phase4/{commodity}_{segment}_model.json 등
-#    - data/processed/phase5/granger_results.csv
-#    - data/processed/phase6/{commodity}_{segment}_breakpoints.json
-
-# 3. batch.py의 _run_phase() 스텁을 runner.py 실 호출로 교체
-#    app/services/batch.py 내 _run_phase() 함수 참조
-
-# 4. 마이그레이션 적용 및 시드 데이터 확인
-alembic upgrade head
-
-# 5. 수동 배치 트리거로 전체 파이프라인 검증
-curl -X POST http://localhost:8000/api/v1/admin/batch/trigger
-
-# 6. pipeline_runs 테이블에서 status='completed' 확인 후 PR 생성
-#    target: backend/merge_all
-```
-
-### 병합 후 확인 항목
-
-- `pipeline_runs.status = 'completed'` (DB 직접 조회)
-- `data_freshness` 테이블 갱신 확인
-- Redis 캐시 무효화 후 `/api/v1/commodities/{id}/stream` 응답 확인
-- `APP_ENV=production` 전환 후 서버 재기동 정상 여부
 
 ---
 

@@ -44,7 +44,21 @@ async def load_granger_results(
             {"path": str(csv_path), "run_id": run_id},
         )
 
-    df = pd.read_csv(csv_path)
+    try:
+        df = pd.read_csv(csv_path)
+    except pd.errors.EmptyDataError:
+        logger.warning("Phase 5 granger_results.csv 비어있음 — 적재 건너뜀", extra={"run_id": run_id})
+        return 0
+    except Exception as e:
+        raise DBError(
+            "DB-TX-001",
+            f"Phase 5 CSV 읽기 실패: {csv_path}",
+            {"path": str(csv_path), "run_id": run_id, "error": str(e)},
+        ) from e
+
+    if df.empty:
+        logger.warning("Phase 5 granger_results.csv 유효 데이터 없음 — 적재 건너뜀", extra={"run_id": run_id})
+        return 0
 
     try:
         # ── granger_results UPSERT ────────────────────────────────────────────

@@ -1,8 +1,12 @@
 """APScheduler 월별 자동 배치 + 파이프라인 결과 DB 적재 (feature_spec_BE-BATCH_v2)."""
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import io
 import logging
 from datetime import date, datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -22,18 +26,145 @@ logger = logging.getLogger("app")
 PHASES: list[str] = ["0", "1", "2", "3", "4", "5", "6", "7", "7-ml"]
 
 
-# ── Phase 실행 스텁 ────────────────────────────────────────────────────────────
+def _call_pipeline(fn, *args, **kwargs):
+    """파이프라인 함수 호출 시 stdout을 캡처해 인코딩 오류를 방지한다.
+
+    pipeline 스크립트의 print()는 서버 컨텍스트에서 불필요하므로 StringIO로 흡수한다.
+    실패 시 예외를 그대로 재발생시킨다.
+    """
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        result = fn(*args, **kwargs)
+    captured = buf.getvalue()
+    if captured.strip():
+        logger.debug(
+            "pipeline stdout captured",
+            extra={"error_code": "BATCH", "context": {"output_preview": captured[:200]}},
+        )
+    return result
+
+
+# ── Phase 실행 ────────────────────────────────────────────────────────────────
 
 async def _run_phase(phase: str, run_id: int) -> None:
-    """Phase 실행 스텁.
+    """Phase 실행 — 파이프라인 계산 + DB 적재.
 
-    feat/be-db-pipeline dev 머지 + APP_ENV=production 전환 시 실제 파이프라인 호출로 교체.
-    현재는 더미 모드 (feature_spec_BE-BATCH_v2 §6).
+    Phase 0~1: 데이터 수집·전처리 (pipeline.preprocessing)
+    Phase 2~6: 계량경제 분석 계산 후 DB 적재 (app.db.loader)
+    Phase 7, 7-ml: 이상 탐지·ML (미구현 — skip)
     """
+    root = Path(settings.pipeline_data_root)
+
     logger.info(
-        f"Phase {phase} 실행 (더미 모드)",
+        f"Phase {phase} 시작",
         extra={"error_code": "BATCH", "context": {"phase": phase, "run_id": run_id}},
     )
+
+    loop = asyncio.get_event_loop()
+
+    if phase == "0":
+        from pipeline.preprocessing.run_phase0 import run_phase0
+        await loop.run_in_executor(None, _call_pipeline, run_phase0)
+
+    elif phase == "1":
+        from pipeline.preprocessing.phase1_seasonal_adjustment import run_phase1
+        merged_dir = str(root / "merged")
+        config_path = str(root / "product_config.json")
+        phase1_dir = str(root / "phase1")
+        await loop.run_in_executor(
+            None,
+            _call_pipeline, run_phase1, merged_dir, config_path, phase1_dir,
+        )
+
+    elif phase == "2":
+        from pipeline.preprocessing.phase2_stationarity_test import run_phase2
+        from app.db.loader.phase2 import load_stationarity_results
+        sa_dir = str(root / "phase1" / "seasonal_adjusted")
+        config_path = str(root / "product_config.json")
+        output_dir = str(root / "phase2")
+        await loop.run_in_executor(
+            None,
+            _call_pipeline, run_phase2, sa_dir, config_path, output_dir,
+        )
+        async with AsyncSessionLocal() as session:
+            await load_stationarity_results(session, run_id)
+
+    elif phase == "3":
+        from pipeline.preprocessing.phase3_cointegration_test import run_phase3
+        from app.db.loader.phase3 import load_cointegration_results
+        sa_dir = str(root / "phase1" / "seasonal_adjusted")
+        config_path = str(root / "product_config.json")
+        orders_path = str(root / "phase2" / "integration_orders.json")
+        output_dir = str(root / "phase3")
+        await loop.run_in_executor(
+            None,
+            _call_pipeline, run_phase3, sa_dir, config_path, orders_path, output_dir,
+        )
+        async with AsyncSessionLocal() as session:
+            await load_cointegration_results(session, run_id)
+
+    elif phase == "4":
+        from pipeline.preprocessing.phase4_model_estimation import run_phase4
+        from app.db.loader.phase4 import load_phase4
+        sa_dir = str(root / "phase1" / "seasonal_adjusted")
+        changes_dir = str(root / "phase1" / "changes")
+        config_path = str(root / "product_config.json")
+        routing_path = str(root / "phase3" / "model_routing.json")
+        output_dir = str(root / "phase4")
+        await loop.run_in_executor(
+            None,
+            _call_pipeline, run_phase4,
+            sa_dir, changes_dir, config_path, routing_path, output_dir,
+        )
+        async with AsyncSessionLocal() as session:
+            await load_phase4(session, run_id)
+
+    elif phase == "5":
+        from pipeline.preprocessing.phase5_granger_causality import run_phase5
+        from app.db.loader.phase5 import load_granger_results
+        await loop.run_in_executor(
+            None,
+            lambda: _call_pipeline(
+                run_phase5,
+                product_config_path=root / "product_config.json",
+                model_routing_path=root / "phase3" / "model_routing.json",
+                changes_dir=root / "phase1" / "changes",
+                output_dir=root / "phase5",
+            ),
+        )
+        async with AsyncSessionLocal() as session:
+            await load_granger_results(session, run_id)
+
+    elif phase == "6":
+        from pipeline.preprocessing.phase6_structural_breaks import run_phase6
+        from app.db.loader.phase6 import load_phase6
+        await loop.run_in_executor(
+            None,
+            lambda: _call_pipeline(
+                run_phase6,
+                product_config_path=root / "product_config.json",
+                model_routing_path=root / "phase3" / "model_routing.json",
+                changes_dir=root / "phase1" / "changes",
+                sa_dir=root / "phase1" / "seasonal_adjusted",
+                phase4_dir=root / "phase4",
+                output_dir=root / "phase6",
+            ),
+        )
+        async with AsyncSessionLocal() as session:
+            await load_phase6(session, run_id)
+
+    elif phase in ("7", "7-ml"):
+        # Phase 7 이상 탐지·ML — 미구현 (phase7-stat 완료 후 연결 예정)
+        logger.info(
+            f"Phase {phase} 미구현 — skip",
+            extra={"error_code": "BATCH", "context": {"phase": phase, "run_id": run_id}},
+        )
+
+    else:
+        logger.warning(
+            f"알 수 없는 Phase {phase} — skip",
+            extra={"error_code": "BATCH", "context": {"phase": phase, "run_id": run_id}},
+        )
 
 
 # ── 배치 초기화 — run_id 확보 ─────────────────────────────────────────────────
