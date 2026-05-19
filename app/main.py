@@ -1,8 +1,16 @@
 """FastAPI 진입점 — lifespan, CORS, 전역 예외 핸들러, 라우터 등록."""
 from __future__ import annotations
 
+import io
 import logging
+import sys
 from contextlib import asynccontextmanager
+
+# Windows cp949 환경에서 UTF-8 출력 강제 — pipeline 스크립트의 유니코드 문자 보호
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError

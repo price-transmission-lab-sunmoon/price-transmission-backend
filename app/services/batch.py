@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import io
 import logging
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -24,6 +26,24 @@ logger = logging.getLogger("app")
 PHASES: list[str] = ["0", "1", "2", "3", "4", "5", "6", "7", "7-ml"]
 
 
+def _call_pipeline(fn, *args, **kwargs):
+    """파이프라인 함수 호출 시 stdout을 캡처해 인코딩 오류를 방지한다.
+
+    pipeline 스크립트의 print()는 서버 컨텍스트에서 불필요하므로 StringIO로 흡수한다.
+    실패 시 예외를 그대로 재발생시킨다.
+    """
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        result = fn(*args, **kwargs)
+    captured = buf.getvalue()
+    if captured.strip():
+        logger.debug(
+            "pipeline stdout captured",
+            extra={"error_code": "BATCH", "context": {"output_preview": captured[:200]}},
+        )
+    return result
+
+
 # ── Phase 실행 ────────────────────────────────────────────────────────────────
 
 async def _run_phase(phase: str, run_id: int) -> None:
@@ -44,7 +64,7 @@ async def _run_phase(phase: str, run_id: int) -> None:
 
     if phase == "0":
         from pipeline.preprocessing.run_phase0 import run_phase0
-        await loop.run_in_executor(None, run_phase0)
+        await loop.run_in_executor(None, _call_pipeline, run_phase0)
 
     elif phase == "1":
         from pipeline.preprocessing.phase1_seasonal_adjustment import run_phase1
@@ -53,7 +73,7 @@ async def _run_phase(phase: str, run_id: int) -> None:
         phase1_dir = str(root / "phase1")
         await loop.run_in_executor(
             None,
-            lambda: run_phase1(merged_dir, config_path, phase1_dir),
+            _call_pipeline, run_phase1, merged_dir, config_path, phase1_dir,
         )
 
     elif phase == "2":
@@ -64,7 +84,7 @@ async def _run_phase(phase: str, run_id: int) -> None:
         output_dir = str(root / "phase2")
         await loop.run_in_executor(
             None,
-            lambda: run_phase2(sa_dir, config_path, output_dir),
+            _call_pipeline, run_phase2, sa_dir, config_path, output_dir,
         )
         async with AsyncSessionLocal() as session:
             await load_stationarity_results(session, run_id)
@@ -78,7 +98,7 @@ async def _run_phase(phase: str, run_id: int) -> None:
         output_dir = str(root / "phase3")
         await loop.run_in_executor(
             None,
-            lambda: run_phase3(sa_dir, config_path, orders_path, output_dir),
+            _call_pipeline, run_phase3, sa_dir, config_path, orders_path, output_dir,
         )
         async with AsyncSessionLocal() as session:
             await load_cointegration_results(session, run_id)
@@ -93,7 +113,8 @@ async def _run_phase(phase: str, run_id: int) -> None:
         output_dir = str(root / "phase4")
         await loop.run_in_executor(
             None,
-            lambda: run_phase4(sa_dir, changes_dir, config_path, routing_path, output_dir),
+            _call_pipeline, run_phase4,
+            sa_dir, changes_dir, config_path, routing_path, output_dir,
         )
         async with AsyncSessionLocal() as session:
             await load_phase4(session, run_id)
@@ -103,7 +124,8 @@ async def _run_phase(phase: str, run_id: int) -> None:
         from app.db.loader.phase5 import load_granger_results
         await loop.run_in_executor(
             None,
-            lambda: run_phase5(
+            lambda: _call_pipeline(
+                run_phase5,
                 product_config_path=root / "product_config.json",
                 model_routing_path=root / "phase3" / "model_routing.json",
                 changes_dir=root / "phase1" / "changes",
@@ -118,7 +140,8 @@ async def _run_phase(phase: str, run_id: int) -> None:
         from app.db.loader.phase6 import load_phase6
         await loop.run_in_executor(
             None,
-            lambda: run_phase6(
+            lambda: _call_pipeline(
+                run_phase6,
                 product_config_path=root / "product_config.json",
                 model_routing_path=root / "phase3" / "model_routing.json",
                 changes_dir=root / "phase1" / "changes",
