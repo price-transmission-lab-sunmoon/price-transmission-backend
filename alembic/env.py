@@ -15,9 +15,11 @@ import app.db.models.timeseries  # noqa: F401
 from alembic import context
 
 # ORM metadata 등록 — 9개 테이블 모두 import하여 Base.metadata에 반영
+from app.core.config import get_settings
 from app.db.base import Base
 
 config = context.config
+config.set_main_option("sqlalchemy.url", get_settings().database_url)
 target_metadata = Base.metadata
 
 if config.config_file_name is not None:
