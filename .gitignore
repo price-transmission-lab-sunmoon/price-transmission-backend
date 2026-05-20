@@ -48,3 +48,11 @@ data/processed/**/*.parquet
 data/raw/**/*
 !data/processed/**/.gitkeep
 !data/raw/**/.gitkeep
+
+# 사용자 추가 데이터/산출물 폴더 (루트 직속, 백업/원본 사본)
+/output/
+/processed/
+/raw/
+
+# 런타임 로그
+*.log
