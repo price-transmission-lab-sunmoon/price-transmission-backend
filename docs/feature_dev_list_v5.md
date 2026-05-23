@@ -118,7 +118,7 @@
 **절대 금지**
 - Phase 7 통계 판정값(`confidence_grade`, `stat_flag`)을 입력 피처로 사용 (순환 논리)
 - 딥러닝 모델 도입 (LSTM, Transformer, Autoencoder) — 구간 분절로 관측치 부족
-- `CONTAMINATION=0.10`, `RANDOM_STATE=42` 코드 하드코딩
+- `CONTAMINATION=0.08`, `RANDOM_STATE=42` 코드 하드코딩 (contamination=0.08 확정값 — pipeline_output_spec_vN v9)
 
 ---
 

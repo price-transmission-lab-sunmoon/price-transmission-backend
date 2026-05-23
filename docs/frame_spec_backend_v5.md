@@ -171,7 +171,7 @@ backend/
 | `LOG_LEVEL` | 로그 레벨 (`DEBUG` \| `INFO` \| `WARNING` \| `ERROR`) | 선택 | `INFO` | — |
 | `CORS_ALLOWED_ORIGINS` | 콤마 구분 origin 목록 | 선택 | `http://localhost:5173` | — |
 | `ROLLING_WINDOW` | 롤링 윈도우 기간 (월) | 선택 | `48` | `CFG-CORE-003` |
-| `CONTAMINATION` | ML 이상 비율 (단일 실행 기준) | 선택 | `0.10` | `CFG-CORE-003` |
+| `CONTAMINATION` | ML 이상 비율 (단일 실행 기준) | 선택 | `0.08` | `CFG-CORE-003` |
 | `CONTAMINATION_RANGE` | ML 이상 비율 민감도 분석 범위 (JSON 목록) | 선택 | `[0.05, 0.10, 0.15]` | `CFG-CORE-003` |
 | `RANDOM_STATE` | ML 난수 시드 | 선택 | `42` | `CFG-CORE-003` |
 | `ZSCORE_WARNING` | Z-score 주의 임계값 | 선택 | `2.0` | `CFG-CORE-003` |

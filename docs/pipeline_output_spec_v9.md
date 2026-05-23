@@ -1,8 +1,8 @@
 # 계량경제학 파이프라인 출력 명세서
 
 **과제명**: 계량경제학 모형과 머신러닝 기반 소비자 물가 분석 및 이상 탐지를 위한 모델 개발
-**문서 유형**: 파이프라인 출력 명세서 (계량경제학 브랜치, v7)
-**작성일**: 2026-04-30
+**문서 유형**: 파이프라인 출력 명세서 (계량경제학 브랜치, v9)
+**작성일**: 2026-05-22
 **작성 기준** (최신 버전 자동 참조 — `abcd_vN.md` 규칙): `doc1_technical_pipeline_vN.md` / `doc2_pattern_definitions_vN.md` / `config/settings.py` / Phase 0~3 구현 코드 기준
 **변경 이력**:
 
@@ -12,6 +12,31 @@
 - v4 → v5: Phase 4 변경.
 - v5 → v6: Phase 5,6 변경.
 - v6 → v7 (2026-05-02): 본문 정정. `reference_audit_report v1` §4 규칙에 따라 외부 참조 표기를 `abcd_vN.md`로 일괄 전환. 헤더·본문의 구버전 참조(당시 doc1 v8) 정정. 본 문서는 이제 `docs/docs_manifest.md`의 버전 해석기에 의해 자동 최신 참조되며, 파일명·본문·푸터는 `_v7`로 정합.
+- v7 → v8: 명세에 맞춰서 제작해서 기존 내용에 변경은 거의 없지만(컬럼명 변경 X) 추가 컬럼이 필요해 그 부분 반영함.
+  pattern1: commodity_id, segment, insufficient_data, subperiod_id 추가
+  pattern2_zscore: commodity_id, segment, upstream_pct, downstream_pct 추가
+  pattern2_asymmetry: mean_tr_up, mean_tr_down, n_up, n_down 추가
+  pattern3: commodity_id, segment, ect_type, ect_abs, ect_sign, abs_expanding, same_sign_streak, abs_expand_streak 추가. spread_n2/n3/n6 타입을 float→bool로 정정
+  출력 디렉토리: stat_timeseries/ 폴더 추가
+- v8 → v9: 파라미터 확정(
+  "탐색적 결정 (0.05~0.15)" → contamination=0.08, nu=0.08 확정 명시
+  모델 파라미터 전체 테이블 추가 (IF/LOF/SVM/전처리/앙상블))
+  컬럼 명세 보완(
+  features, predictions, cross_validation, grades 전부에 commodity_id, segment 컬럼 추가
+  predictions에 svm_score 설명 보강 ("음수=이상")
+  grades에 ml_consensus_count, agreement 컬럼 추가)
+  새로운 출력물(
+  models/{YYYYMMDD_HHMM}/ — 타임스탬프 방식 모델 저장 + pkl 파일 패턴 + run_log 명세
+  phase7_ml_summary.csv — 전체 요약 컬럼 명세)
+  5축 평가 프레임워크 섹션(
+  코드 구조 트리, 실행 방법, 출력 파일 6종 명세
+  연속형 앙상블 스코어 방식 설명
+  run_meta.json 구조)
+  SHAP 분석 섹션(
+  3종 모델별 코드 + 대시보드 코드 구조
+  출력 디렉토리 패턴 ({YYYYMMDD*HHMM}\_IF, 대시보드* 등)
+  SHAP CSV + summary + run_meta.json 명세
+  run_meta.json 주요 필드 (status, skipped, background_data 등))
 
 ---
 
@@ -738,9 +763,9 @@ data/processed/phase6/
 
 ## Phase 7 — 이상 패턴 탐지 (통계 기반, 주 방법론)
 
-**입력**: `phase1/changes/{cid}_changes.csv`, `phase4/baseline/{cid}_{seg}_baseline.json`, `phase4/ect/{cid}_{seg}_ect.csv`, `phase6/breakpoints/{cid}_{seg}_breakpoints.json`
+**입력**: `phase1/changes/{cid}_changes.csv`, `phase4/baseline/{cid}_{seg}_baseline.json`, `phase4/ect/{cid}_{seg}_ect.csv`, `phase6/breakpoints/{cid}_{seg}_breakpoints.json`, `phase6/subperiod_models/{cid}_{seg}_subperiod_{n}_model.json`
 
-**방법**: 롤링 윈도우 W=48개월 기준. 초기 48개월은 기준 분포 축적 기간 (탐지 미수행). 로버스트니스 체크용으로 W=36, 60 병행 산출.
+**방법**: 롤링 윈도우 W=48개월 기준. 초기 48개월은 기준 분포 축적 기간 (탐지 미수행). 로버스트니스 체크용으로 W=36, 60 병행 산출. 방향 역전은 상류/하류 양쪽 절대값 >= 1.0% 조건 부여. 전이율 산출 시 상류 절대값 < 0.5%이면 NaN 처리.
 
 ### 구간별 패턴 적용 범위
 
@@ -761,56 +786,71 @@ data/processed/phase6/
 ```
 data/processed/phase7/
 ├── pattern1/
-│   └── {cid}_{seg}_pattern1.csv       ← 방향 역전·시차 이탈 탐지 결과
+│   ├── {cid}_{seg}_pattern1.csv           ← 방향 역전·시차 이탈 탐지 결과
+│   └── pattern1_summary_stats.csv         ← 패턴 1 요약 통계
 ├── pattern2/
 │   ├── {cid}_{seg}_pattern2_zscore.csv    ← 전이율 Z-score + IQR 탐지 결과
-│   └── {cid}_{seg}_pattern2_asymmetry.csv ← 비대칭 검정 결과 (구간 A·B만, 전체 기간)
+│   ├── {cid}_{seg}_pattern2_asymmetry.csv ← 비대칭 검정 결과 (구간 A·B만, 전체 기간)
+│   └── pattern2_summary_stats.csv         ← 패턴 2 요약 통계
 ├── pattern3/
-│   └── {cid}_{seg}_pattern3.csv       ← 스프레드 누적 확대 탐지 결과 (구간 B만)
+│   ├── {cid}_{seg}_pattern3.csv           ← 스프레드 누적 확대 탐지 결과 (구간 B만)
+│   └── pattern3_summary_stats.csv         ← 패턴 3 요약 통계
 ├── robustness/
 │   └── {cid}_{seg}_robustness_W{36|60}.csv  ← 롤링 윈도우 민감도 비교
-└── phase7_summary.csv                 ← 전 품목·구간 탐지 이벤트 목록
+├── stat_timeseries/
+│   └── {cid}_{seg}_stat_timeseries.csv    ← DB stat_timeseries 테이블 적재용 전 시점 시계열
+└── phase7_summary.csv                     ← 전 품목·구간 탐지 이벤트 목록
 ```
 
 ### `pattern1/{cid}_{seg}_pattern1.csv`
 
 패턴 1 (방향 역전·시차 이탈) 탐지 결과. 전 구간 공통.
 
-| 컬럼                 | 타입               | 설명                                                    |
-| -------------------- | ------------------ | ------------------------------------------------------- |
-| `date`               | DatetimeIndex (MS) | 월 기준일                                               |
-| `upstream_pct`       | float              | 상류 가격 변화율 (%)                                    |
-| `downstream_pct`     | float              | 하류 가격 변화율 (%)                                    |
-| `direction_reversal` | bool               | 방향 역전 여부 (상·하류 부호 불일치)                    |
-| `upstream_move_date` | date \| None       | 방향 역전 탐지 시 상류 변동 기준 월                     |
-| `lag_elapsed`        | int \| None        | 상류 변동 후 경과 기간 (개월)                           |
-| `normal_lag`         | int                | 기준선 정상 전달 시차 (IRF 피크 기준)                   |
-| `lag_deviation`      | bool               | 시차 이탈 여부 (경과 > 정상 시차 + 1)                   |
-| `pattern1_flag`      | bool               | 패턴 1 최종 탐지 여부 (방향 역전 OR 시차 이탈)          |
-| `flag_type`          | str \| None        | `"direction_reversal"` \| `"lag_deviation"` \| `"both"` |
+| 컬럼                 | 타입               | 설명                                                                |
+| -------------------- | ------------------ | ------------------------------------------------------------------- |
+| `date`               | DatetimeIndex (MS) | 월 기준일                                                           |
+| `commodity_id`       | str                | 품목 식별자                                                         |
+| `segment`            | str                | 분석 구간                                                           |
+| `upstream_pct`       | float              | 상류 가격 변화율 (%)                                                |
+| `downstream_pct`     | float              | 하류 가격 변화율 (%)                                                |
+| `direction_reversal` | bool               | 방향 역전 여부 (상·하류 부호 불일치, 양쪽 절대값 >= 1.0% 조건)      |
+| `upstream_move_date` | date \| None       | 시차 이탈 탐지 시 상류 변동 기준 월                                 |
+| `lag_elapsed`        | int \| None        | 상류 변동 후 경과 기간 (개월)                                       |
+| `normal_lag`         | int                | 기준선 정상 전달 시차 (IRF 피크 기준, 하위 기간별 상이)             |
+| `lag_deviation`      | bool               | 시차 이탈 여부 (경과 > 정상 시차 + 1)                               |
+| `insufficient_data`  | bool               | 관측 기간 종료로 인한 판정 유보                                     |
+| `subperiod_id`       | int \| None        | 해당 시점의 하위 기간 ID (구조 변화 없는 구간이면 null)             |
+| `pattern1_flag`      | bool               | 패턴 1 최종 탐지 여부 (방향 역전 OR 시차 이탈)                      |
+| `flag_type`          | str \| None        | `"direction_reversal"` \| `"lag_deviation"` \| `"both"` \| `"none"` |
 
 **비고 (D-05)**: `flag_type`은 DB `anomaly_results.pattern1_flag_type VARCHAR(20)` 컬럼에 그대로 보존된다. `direction_reversal`과 `lag_deviation` boolean 조합으로의 재변환은 적재 로직이 아닌 향후 확장 시에만 고려한다.
+
+**비고 (D-14)**: `normal_lag`은 구조 변화가 탐지된 구간에서 SubperiodResolver에 의해 하위 기간별 상이한 값이 적용된다. 동일 품목·구간이라도 시기에 따라 정상 시차 기준이 달라진다.
 
 ### `pattern2/{cid}_{seg}_pattern2_zscore.csv`
 
 패턴 2 전이율 크기 이탈 탐지 결과. 구간 A·B만 산출.
 
-| 컬럼                     | 타입               | 설명                                                        |
-| ------------------------ | ------------------ | ----------------------------------------------------------- |
-| `date`                   | DatetimeIndex (MS) | 월 기준일                                                   |
-| `transmission_rate`      | float              | 월별 전이율 = 하류 변화율 ÷ 상류 변화율                     |
-| `rolling_mean`           | float              | 롤링 48개월 평균 전이율                                     |
-| `rolling_std`            | float              | 롤링 48개월 표준편차                                        |
-| `zscore`                 | float              | Z-score = (전이율 - rolling_mean) / rolling_std             |
-| `q1`, `q3`, `iqr`        | float              | 롤링 IQR 통계                                               |
-| `iqr_lower`, `iqr_upper` | float              | Tukey 이상치 경계 (Q1 - 1.5×IQR, Q3 + 1.5×IQR)              |
-| `zscore_warning`         | bool               | Z-score > 2.0 (주의 레벨)                                   |
-| `zscore_alert`           | bool               | Z-score > 2.5 (경보 레벨)                                   |
-| `iqr_outlier`            | bool               | IQR 경계 이탈 여부                                          |
-| `pattern2_flag`          | bool               | 패턴 2 최종 탐지 여부 (Z-score 경보 AND IQR 이탈 동시 충족) |
-| `over_transmission`      | bool               | 전이율 상한 초과 (과대 전달)                                |
-| `under_transmission`     | bool               | 전이율 하한 미달 (과소 전달)                                |
-| `in_warmup_period`       | bool               | 초기 48개월 기준 분포 축적 기간 여부 (탐지 미수행)          |
+| 컬럼                     | 타입               | 설명                                                         |
+| ------------------------ | ------------------ | ------------------------------------------------------------ |
+| `date`                   | DatetimeIndex (MS) | 월 기준일                                                    |
+| `commodity_id`           | str                | 품목 식별자                                                  |
+| `segment`                | str                | 분석 구간                                                    |
+| `upstream_pct`           | float              | 상류 가격 변화율 (%)                                         |
+| `downstream_pct`         | float              | 하류 가격 변화율 (%)                                         |
+| `transmission_rate`      | float              | 월별 전이율 = 하류 변화율 ÷ 상류 변화율 (상류 < 0.5% 시 NaN) |
+| `rolling_mean`           | float              | 롤링 48개월 평균 전이율                                      |
+| `rolling_std`            | float              | 롤링 48개월 표준편차                                         |
+| `zscore`                 | float              | Z-score = (전이율 - rolling_mean) / rolling_std              |
+| `q1`, `q3`, `iqr`        | float              | 롤링 IQR 통계                                                |
+| `iqr_lower`, `iqr_upper` | float              | Tukey 이상치 경계 (Q1 - 1.5×IQR, Q3 + 1.5×IQR)               |
+| `zscore_warning`         | bool               | Z-score > 2.0 (주의 레벨)                                    |
+| `zscore_alert`           | bool               | Z-score > 2.5 (경보 레벨)                                    |
+| `iqr_outlier`            | bool               | IQR 경계 이탈 여부                                           |
+| `pattern2_flag`          | bool               | 패턴 2 최종 탐지 여부 (Z-score 경보 AND IQR 이탈 동시 충족)  |
+| `over_transmission`      | bool               | 전이율 상한 초과 (과대 전달)                                 |
+| `under_transmission`     | bool               | 전이율 하한 미달 (과소 전달)                                 |
+| `in_warmup_period`       | bool               | 초기 48개월 기준 분포 축적 기간 여부 (탐지 미수행)           |
 
 **비고 (D-03)**: `zscore_warning`(Z>2.0)과 `zscore_alert`(Z>2.5) 두 컬럼 모두 파이프라인에서 산출되며, DB `anomaly_results.zscore_warning BOOLEAN`과 `anomaly_results.zscore_alert BOOLEAN`에 각각 저장된다. API 응답의 `stat_metrics.zscore_threshold_warning: 2.0`은 임계값 상수이며, 해당 월의 warning 여부는 DB 저장값(`zscore_warning`)을 사용한다.
 
@@ -831,24 +871,62 @@ data/processed/phase7/
 | `rocket_feather_direction` | str \| None   | 유의 시 방향 (`upward_stronger` \| `downward_stronger`)    |
 | `up_coef`                  | float \| None | 비대칭 VAR 상승기 전이 계수                                |
 | `down_coef`                | float \| None | 비대칭 VAR 하락기 전이 계수                                |
+| `mean_tr_up`               | float         | 상승기 평균 전이율 (보조 지표)                             |
+| `mean_tr_down`             | float         | 하락기 평균 전이율 (보조 지표)                             |
+| `n_up`                     | int           | 상승기 관측 수                                             |
+| `n_down`                   | int           | 하락기 관측 수                                             |
 
 ### `pattern3/{cid}_{seg}_pattern3.csv`
 
 패턴 3 (국제가 안정기 중 하류 스프레드 누적 확대) 탐지 결과. 구간 B만 산출.
 
-| 컬럼               | 타입               | 설명                                                       |
-| ------------------ | ------------------ | ---------------------------------------------------------- |
-| `date`             | DatetimeIndex (MS) | 월 기준일                                                  |
-| `intl_pct_change`  | float              | 국제가 원화 환산 월 변화율 (±3% 이내를 안정 구간으로 정의) |
-| `in_stable_period` | bool               | 국제가 안정 구간 여부 (abs(intl_pct_change) ≤ 0.03)        |
-| `ect_or_spread`    | float              | ECT 값 (VECM) 또는 log 수준 스프레드 (VAR)                 |
-| `spread_n2`        | float              | 안정 구간 진입 후 N=2개월 누적 스프레드 변화               |
-| `spread_n3`        | float              | 안정 구간 진입 후 N=3개월 누적 스프레드 변화               |
-| `spread_n6`        | float              | 안정 구간 진입 후 N=6개월 누적 스프레드 변화               |
-| `pattern3_flag_n2` | bool               | N=2 기준 탐지 여부                                         |
-| `pattern3_flag_n3` | bool               | N=3 기준 탐지 여부 (기본)                                  |
-| `pattern3_flag_n6` | bool               | N=6 기준 탐지 여부 (구조적)                                |
-| `pattern3_flag`    | bool               | 기본 탐지 여부 (`pattern3_flag_n3`와 동일)                 |
+| 컬럼                | 타입               | 설명                                                       |
+| ------------------- | ------------------ | ---------------------------------------------------------- |
+| `date`              | DatetimeIndex (MS) | 월 기준일                                                  |
+| `commodity_id`      | str                | 품목 식별자                                                |
+| `segment`           | str                | 분석 구간                                                  |
+| `intl_pct_change`   | float              | 국제가 원화 환산 월 변화율 (±3% 이내를 안정 구간으로 정의) |
+| `in_stable_period`  | bool               | 국제가 안정 구간 여부 (abs(intl_pct_change) ≤ 0.03)        |
+| `ect_or_spread`     | float              | ECT 값 (VECM) 또는 log 수준 스프레드 (VAR)                 |
+| `ect_type`          | str                | `"ECT"` (VECM) \| `"log_spread"` (VAR)                     |
+| `ect_abs`           | float              | ECT/스프레드 절대값                                        |
+| `ect_sign`          | float              | ECT/스프레드 부호 (+1 / -1)                                |
+| `abs_expanding`     | bool               | 직전 대비 절대값 확대 여부                                 |
+| `same_sign_streak`  | int                | 같은 부호 유지 연속 개월 수                                |
+| `abs_expand_streak` | int                | 같은 부호 + 절대값 확대 연속 개월 수                       |
+| `pattern3_flag_n2`  | bool               | N=2 기준 탐지 여부 (조기 신호)                             |
+| `pattern3_flag_n3`  | bool               | N=3 기준 탐지 여부 (기본)                                  |
+| `pattern3_flag_n6`  | bool               | N=6 기준 탐지 여부 (구조적)                                |
+| `pattern3_flag`     | bool               | 기본 탐지 여부 (`pattern3_flag_n3`와 동일)                 |
+
+### `stat_timeseries/{cid}_{seg}_stat_timeseries.csv`
+
+DB `stat_timeseries` 테이블 적재용 전 시점 시계열. 33개 구간 전부 산출.
+
+| 컬럼                     | 타입               | 설명                              |
+| ------------------------ | ------------------ | --------------------------------- |
+| `commodity_id`           | str                | 품목 식별자                       |
+| `segment_id`             | str                | 분석 구간                         |
+| `period`                 | DatetimeIndex (MS) | 월 기준일                         |
+| `transmission_rate`      | float              | 전이율 (상류 < 0.5% 시 NaN)       |
+| `upstream_pct`           | float              | 상류 변화율 (%)                   |
+| `downstream_pct`         | float              | 하류 변화율 (%)                   |
+| `rolling_mean`           | float              | 롤링 평균 (A/B 구간만, 그 외 NaN) |
+| `rolling_std`            | float              | 롤링 표준편차 (A/B 구간만)        |
+| `zscore`                 | float              | Z-score (A/B 구간만)              |
+| `q1`, `q3`, `iqr`        | float              | 사분위수, IQR (A/B 구간만)        |
+| `iqr_lower`, `iqr_upper` | float              | IQR 경계 (A/B 구간만)             |
+| `in_warmup_period`       | bool               | warmup 기간 여부                  |
+| `zscore_w36`             | float              | W=36 Z-score (A/B 구간만)         |
+| `zscore_w60`             | float              | W=60 Z-score (A/B 구간만)         |
+| `ect_or_spread`          | float              | ECT 또는 로그 스프레드            |
+| `ect_type`               | str                | `"ECT"` \| `"log_spread"`         |
+| `in_stable_period`       | bool               | 안정 구간 (B 구간만, 그 외 NaN)   |
+| `spread_n2`              | bool               | 스프레드 N=2 판정 (B 구간만)      |
+| `spread_n3`              | bool               | 스프레드 N=3 판정 (B 구간만)      |
+| `spread_n6`              | bool               | 스프레드 N=6 판정 (B 구간만)      |
+| `exchange_rate_pct`      | float              | 환율 변화율 (%)                   |
+| `intl_price_usd_pct`     | float              | 달러 국제가 변화율 (%)            |
 
 ### `phase7_summary.csv`
 
@@ -874,35 +952,72 @@ Phase 7 전 품목·구간 탐지 이벤트 통합 목록. Phase 7-ML 교차 대
 
 **적용 구간**: 구간 A·B 한정 (전 품목 공통). 구간 C·D·D′ 미적용.
 
-**ML 모델 학습 단위 (D-14)**: **품목×구간 단위 개별 학습**. 각 `{cid}_{seg}` 조합별로 독립적인 Isolation Forest, LOF, One-Class SVM 모델을 학습한다. `contamination` / `nu` 파라미터의 민감도 분석(0.05, 0.10, 0.15)은 품목·구간 공통 설정을 적용하여 수행한다.
+**ML 모델 학습 단위 (D-14)**: **품목×구간 단위 개별 학습**. 각 `{cid}_{seg}` 조합별로 독립적인 Isolation Forest, LOF, One-Class SVM 모델을 학습한다. `contamination` / `nu` 파라미터는 **0.08로 확정**하였으며, 민감도 분석(0.05, 0.10, 0.15)은 5축 평가 프레임워크의 축 4에서 품목·구간 공통 설정으로 수행한다.
 
-**피처 6종 (고정)**:
+**피처 6종 (고정, 8회 실험을 통해 최적 확인)**:
 
-| #   | 피처                                         | 출처    |
-| --- | -------------------------------------------- | ------- |
-| 1   | 월별 전이율 (하류 변화율 ÷ 상류 변화율)      | Phase 4 |
-| 2   | 상류 가격 변화율                             | Phase 1 |
-| 3   | 하류 가격 변화율                             | Phase 1 |
-| 4   | ECT 또는 로그 수준 스프레드                  | Phase 4 |
-| 5   | 환율 월 변동률 (`exchange_rate_pct`)         | Phase 1 |
-| 6   | 달러 국제가 월 변동률 (`intl_price_usd_pct`) | Phase 1 |
+| #   | 피처명               | 설명                                    | 출처    |
+| --- | -------------------- | --------------------------------------- | ------- |
+| F1  | `transmission_rate`  | 월별 전이율 (하류 변화율 ÷ 상류 변화율) | Phase 4 |
+| F2  | `upstream_pct`       | 상류 가격 변화율 (%)                    | Phase 1 |
+| F3  | `downstream_pct`     | 하류 가격 변화율 (%)                    | Phase 1 |
+| F4  | `ect_or_spread`      | ECT 또는 로그 수준 스프레드             | Phase 4 |
+| F5  | `exchange_rate_pct`  | 환율 월 변동률 (%)                      | Phase 1 |
+| F6  | `intl_price_usd_pct` | 달러 국제가 월 변동률 (%)               | Phase 1 |
 
 **비고**: Phase 7 통계 판정 결과(Z-score 경보 여부 등)는 피처에서 제외 (순환 논리 방지).
 
-**모델**: StandardScaler 적용 후 Isolation Forest (n_estimators=100), LOF, One-Class SVM (kernel='rbf') 독립 실행.
+**모델 파라미터 (최종 확정)**:
+
+| 모델             | 파라미터            | 값                                     |
+| ---------------- | ------------------- | -------------------------------------- |
+| Isolation Forest | n_estimators        | 100                                    |
+|                  | contamination       | 0.08                                   |
+|                  | random_state        | 42                                     |
+| LOF              | n_neighbors         | 10                                     |
+|                  | contamination       | 0.08                                   |
+|                  | novelty             | False                                  |
+| One-Class SVM    | kernel              | rbf                                    |
+|                  | nu                  | 0.08                                   |
+|                  | gamma               | scale                                  |
+| 전처리           | scaler              | StandardScaler                         |
+| 앙상블           | consensus_threshold | 2 (3종 중 2개 이상 → ml_detected=True) |
+
+### 코드 구조
+
+```
+src/preprocessing/Phase7/
+├── phase7_ml_common.py     ← 피처 행렬 구성, 전처리(StandardScaler), stat_detected 조인
+├── phase7_ml_models.py     ← 3종 모델 실행 + 앙상블 집계
+├── phase7_ml_cross.py      ← 통계-ML 교차 대조 + 신뢰도 등급화
+└── phase7_ml_run.py        ← 전체 파이프라인 진입점 (20유닛 순차 실행)
+```
+
+### 실행 방법
+
+```bash
+python src/preprocessing/Phase7/phase7_ml_run.py
+```
 
 ### 출력 디렉토리
 
 ```
 data/processed/phase7_ml/
 ├── features/
-│   └── {cid}_{seg}_features.csv        ← ML 입력 피처 (스케일링 전)
+│   └── {cid}_{seg}_features.csv              ← ML 입력 피처 (스케일링 전)
 ├── predictions/
-│   └── {cid}_{seg}_ml_predictions.csv  ← 3개 모델 탐지 결과
+│   └── {cid}_{seg}_ml_predictions.csv        ← 3개 모델 탐지 결과 + 앙상블
 ├── cross_validation/
-│   └── {cid}_{seg}_cross_val.csv       ← 통계-ML 교차 대조 결과
-└── confidence_grades/
-    └── {cid}_{seg}_grades.csv          ← 신뢰도 등급 최종 산출 ← Phase 8 입력
+│   └── {cid}_{seg}_cross_val.csv             ← 통계-ML 교차 대조 결과
+├── confidence_grades/
+│   └── {cid}_{seg}_grades.csv                ← 신뢰도 등급 최종 산출 ← Phase 8 입력
+├── models/{YYYYMMDD_HHMM}/
+│   ├── {cid}_{seg}_if_{run_date}.pkl         ← Isolation Forest 모델
+│   ├── {cid}_{seg}_lof_{run_date}.pkl        ← LOF 모델
+│   ├── {cid}_{seg}_svm_{run_date}.pkl        ← One-Class SVM 모델
+│   ├── {cid}_{seg}_scaler_{run_date}.pkl     ← StandardScaler 객체
+│   └── run_log_{run_date}.json               ← 실행 파라미터·결과 로그
+└── phase7_ml_summary.csv                     ← 전체 20유닛 요약 통계
 ```
 
 ### `features/{cid}_{seg}_features.csv`
@@ -910,6 +1025,8 @@ data/processed/phase7_ml/
 | 컬럼                 | 타입               | 설명                        |
 | -------------------- | ------------------ | --------------------------- |
 | `date`               | DatetimeIndex (MS) | 월 기준일                   |
+| `commodity_id`       | str                | 품목 ID                     |
+| `segment`            | str                | 구간 (A 또는 B)             |
 | `transmission_rate`  | float              | 월별 전이율                 |
 | `upstream_pct`       | float              | 상류 가격 변화율 (%)        |
 | `downstream_pct`     | float              | 하류 가격 변화율 (%)        |
@@ -922,26 +1039,29 @@ data/processed/phase7_ml/
 | 컬럼                 | 타입               | 설명                                            |
 | -------------------- | ------------------ | ----------------------------------------------- |
 | `date`               | DatetimeIndex (MS) | 월 기준일                                       |
+| `commodity_id`       | str                | 품목 ID                                         |
+| `segment`            | str                | 구간 (A 또는 B)                                 |
 | `if_anomaly`         | bool               | Isolation Forest 이상 탐지 여부                 |
 | `if_score`           | float              | Isolation Forest 이상 점수 (낮을수록 이상)      |
 | `lof_anomaly`        | bool               | LOF 이상 탐지 여부                              |
-| `lof_score`          | float              | LOF 이상 점수                                   |
+| `lof_score`          | float              | LOF 이상 점수 (낮을수록 이상)                   |
 | `svm_anomaly`        | bool               | One-Class SVM 이상 탐지 여부                    |
-| `svm_score`          | float              | SVM 결정 함수 값                                |
-| `ml_detected`        | bool               | 3개 모델 중 2개 이상 탐지 시 True (앙상블 기준) |
+| `svm_score`          | float              | SVM 결정 함수 값 (음수=이상)                    |
 | `ml_consensus_count` | int                | 탐지 모델 수 (0~3)                              |
-
-**비고**: `contamination` / `nu` 파라미터는 탐색적 결정 (0.05~0.15 범위 민감도 분석 병행).
+| `ml_detected`        | bool               | 3개 모델 중 2개 이상 탐지 시 True (앙상블 기준) |
 
 ### `cross_validation/{cid}_{seg}_cross_val.csv`
 
-| 컬럼            | 타입               | 설명                                              |
-| --------------- | ------------------ | ------------------------------------------------- |
-| `date`          | DatetimeIndex (MS) | 월 기준일                                         |
-| `stat_detected` | bool               | Phase 7 통계 기반 탐지 여부                       |
-| `ml_detected`   | bool               | Phase 7-ML 앙상블 탐지 여부                       |
-| `agreement`     | bool               | 통계·ML 일치 여부                                 |
-| `pattern_type`  | str \| None        | 통계 탐지된 패턴 유형 (stat_detected=True인 경우) |
+| 컬럼                 | 타입               | 설명                                              |
+| -------------------- | ------------------ | ------------------------------------------------- |
+| `date`               | DatetimeIndex (MS) | 월 기준일                                         |
+| `commodity_id`       | str                | 품목 ID                                           |
+| `segment`            | str                | 구간 (A 또는 B)                                   |
+| `ml_detected`        | bool               | Phase 7-ML 앙상블 탐지 여부                       |
+| `ml_consensus_count` | int                | 탐지 모델 수 (0~3)                                |
+| `stat_detected`      | bool               | Phase 7 통계 기반 탐지 여부                       |
+| `pattern_type`       | str \| None        | 통계 탐지된 패턴 유형 (stat_detected=True인 경우) |
+| `agreement`          | bool               | 통계·ML 일치 여부                                 |
 
 ### `confidence_grades/{cid}_{seg}_grades.csv`
 
@@ -949,13 +1069,17 @@ data/processed/phase7_ml/
 
 **DB 적재 규칙 (D-02)**: `confidence_grade IS NOT NULL` 행, 즉 탐지된 행만 `anomaly_results` 테이블에 적재한다. `confidence_grade = null`인 정상 월은 적재하지 않는다. DB `anomaly_results`는 탐지 이벤트만 저장하는 테이블임을 명시한다.
 
-| 컬럼               | 타입               | 설명                |
-| ------------------ | ------------------ | ------------------- |
-| `date`             | DatetimeIndex (MS) | 월 기준일           |
-| `stat_detected`    | bool               | 통계 기반 탐지 여부 |
-| `ml_detected`      | bool               | ML 탐지 여부        |
-| `confidence_grade` | str \| None        | 신뢰도 등급         |
-| `pattern_type`     | str \| None        | 탐지된 패턴 유형    |
+| 컬럼                 | 타입               | 설명                |
+| -------------------- | ------------------ | ------------------- |
+| `date`               | DatetimeIndex (MS) | 월 기준일           |
+| `commodity_id`       | str                | 품목 ID             |
+| `segment`            | str                | 구간 (A 또는 B)     |
+| `ml_detected`        | bool               | ML 탐지 여부        |
+| `ml_consensus_count` | int                | 탐지 모델 수 (0~3)  |
+| `stat_detected`      | bool               | 통계 기반 탐지 여부 |
+| `pattern_type`       | str \| None        | 탐지된 패턴 유형    |
+| `agreement`          | bool               | 통계·ML 일치 여부   |
+| `confidence_grade`   | str                | 신뢰도 등급         |
 
 `confidence_grade` 값:
 
@@ -965,6 +1089,126 @@ data/processed/phase7_ml/
 | `"medium"`    | 통계 ✔ + ML ✗ | 중신뢰: 통계 확인, ML 미탐지 |
 | `"reference"` | 통계 ✗ + ML ✔ | 참고: ML 탐지, 통계 미탐지   |
 | `null`        | 통계 ✗ + ML ✗ | 정상 — DB 적재 제외          |
+
+### `models/{YYYYMMDD_HHMM}/`
+
+실행마다 타임스탬프 디렉토리를 생성하여 학습된 모델과 실행 로그를 버전 관리한다.
+
+| 파일 패턴                           | 설명                                  |
+| ----------------------------------- | ------------------------------------- |
+| `{cid}_{seg}_if_{run_date}.pkl`     | Isolation Forest 모델 (joblib 직렬화) |
+| `{cid}_{seg}_lof_{run_date}.pkl`    | LOF 모델                              |
+| `{cid}_{seg}_svm_{run_date}.pkl`    | One-Class SVM 모델                    |
+| `{cid}_{seg}_scaler_{run_date}.pkl` | StandardScaler 객체 (재현용)          |
+| `run_log_{run_date}.json`           | 파라미터, 결과 요약, pkl 파일 목록    |
+
+### `phase7_ml_summary.csv`
+
+| 컬럼              | 타입 | 설명                    |
+| ----------------- | ---- | ----------------------- |
+| `commodity_id`    | str  | 품목 ID                 |
+| `segment`         | str  | 구간                    |
+| `total_months`    | int  | 전체 관측 월 수         |
+| `valid_months`    | int  | 결측 제거 후 유효 월 수 |
+| `dropped_months`  | int  | 결측으로 제외된 월 수   |
+| `if_anomaly`      | int  | IF 탐지 건수            |
+| `lof_anomaly`     | int  | LOF 탐지 건수           |
+| `svm_anomaly`     | int  | SVM 탐지 건수           |
+| `ml_detected`     | int  | 앙상블 탐지 건수        |
+| `grade_high`      | int  | high 등급 건수          |
+| `grade_medium`    | int  | medium 등급 건수        |
+| `grade_reference` | int  | reference 등급 건수     |
+
+---
+
+### 5축 평가 프레임워크
+
+ML 모델에 라벨이 없으므로 전통적 정확도/재현율을 산출할 수 없다. 대신 5개 독립 축으로 신뢰성을 다면 평가한다. 평가 코드는 `tests/phase7_ml/`에 위치하며, 실행마다 타임스탬프 디렉토리(`results/run_{YYYYMMDD_HHMMSS}/`)에 결과를 보존한다.
+
+```bash
+python tests/phase7_ml/run_all_evaluation.py --memo "실행 메모"
+python tests/phase7_ml/generate_dashboard.py
+```
+
+**평가 코드 구조**:
+
+```
+tests/phase7_ml/
+├── eval_common.py              ← 외부 충격 목록(5개 이벤트), 공통 유틸
+├── test_axis1_esr.py           ← 축 1: 외부 충격 회수율 (ESR)
+├── test_axis2_separation.py    ← 축 2: 이상 점수 분리도 (SR)
+├── test_axis3_auc.py           ← 축 3: AUC + ROC curve (연속형 앙상블 스코어)
+├── test_axis4_sensitivity.py   ← 축 4: 파라미터 민감도 (Stability Ratio)
+├── test_axis5_consensus.py     ← 축 5: 합의 지표 (CTA + ASC + P_stat + P_ml)
+├── run_all_evaluation.py       ← 5축 통합 실행 + 타임스탬프 저장 + run_meta.json
+├── generate_dashboard.py       ← 5축 대시보드 HTML 생성
+└── results/
+    ├── run_{YYYYMMDD_HHMMSS}/  ← 축별 CSV + ROC curves JSON + run_meta.json
+    └── latest/                 ← 최신 결과 복사본
+```
+
+**평가 출력 파일**:
+
+| 파일                    | 설명                                          |
+| ----------------------- | --------------------------------------------- |
+| `axis1_esr.csv`         | 유닛별 모델별 ESR + 충격 건수                 |
+| `axis2_separation.csv`  | 유닛별 모델별 분리도(SR)                      |
+| `axis3_auc.csv`         | 유닛별 모델별 + 앙상블 AUC                    |
+| `axis3_roc_curves.json` | 유닛별 FPR/TPR 배열 (ROC curve 대시보드용)    |
+| `axis4_sensitivity.csv` | 유닛별 contamination SR + LOF k SR            |
+| `axis5_consensus.csv`   | 유닛별 CTA, ASC, P_stat, P_ml, 가설 성립 여부 |
+| `run_meta.json`         | 파라미터, 피처 목록, 요약 지표, 메모, status  |
+
+**축 3 앙상블 AUC 산출 방식**: `ml_consensus_count`(0~3 이산값) 대신, 3종 모델의 원시 이상 점수를 부호 반전 → Min-Max 정규화 → 평균하여 연속형 스코어를 사용한다. 이에 따라 ROC curve가 계단형이 아닌 부드러운 곡선으로 산출된다.
+
+---
+
+### SHAP 피처 중요도 분석
+
+3종 모델에 SHAP(SHapley Additive exPlanations)를 적용하여 각 모델의 피처별 기여도를 정량화한다. 모델별 독립 코드로 관리하며, `--output-dir` 인자로 중단 후 이어하기를 지원한다.
+
+```bash
+python tests/shap/run_shap_if.py                          # IF (TreeExplainer, 수 초)
+python tests/shap/run_shap_lof.py                         # LOF (KernelExplainer, ~5분)
+python tests/shap/run_shap_svm.py                         # SVM (KernelExplainer, ~4분)
+python tests/shap/generate_shap_dashboard.py \
+  --if-dir {IF_DIR} --lof-dir {LOF_DIR} --svm-dir {SVM_DIR}
+```
+
+**SHAP 코드 구조**:
+
+```
+tests/shap/
+├── run_shap_if.py              ← IF SHAP (TreeExplainer, exact)
+├── run_shap_lof.py             ← LOF SHAP (KernelExplainer, novelty=True 래퍼)
+├── run_shap_svm.py             ← SVM SHAP (KernelExplainer, -decision_function)
+├── generate_shap_dashboard.py  ← Bar Plot + Heatmap + Beeswarm 대시보드 생성
+└── results/
+    ├── {YYYYMMDD_HHMM}_IF/     ← IF SHAP 결과 (20개 CSV + summary + meta)
+    ├── {YYYYMMDD_HHMM}_LOF/    ← LOF SHAP 결과
+    ├── {YYYYMMDD_HHMM}_SVM/    ← SVM SHAP 결과
+    └── 대시보드_{YYYYMMDD_HHMM}/ ← 대시보드 HTML + Beeswarm PNG ×3
+```
+
+**SHAP 출력 파일 (모델별)**:
+
+| 파일                   | 설명                                                                |
+| ---------------------- | ------------------------------------------------------------------- |
+| `{cid}_{seg}_shap.csv` | 전체 관측치의 6종 피처별 SHAP 값 (date, commodity_id, segment 포함) |
+| `shap_summary.csv`     | 유닛별 피처별 Mean \|SHAP\| + top 피처 + 중요도                     |
+| `run_meta.json`        | Explainer 종류, status(complete/partial), 글로벌 피처 중요도        |
+
+**SHAP run_meta.json 주요 필드**:
+
+| 필드                        | 설명                                               |
+| --------------------------- | -------------------------------------------------- |
+| `model`                     | IF / LOF / SVM                                     |
+| `explainer`                 | TreeExplainer (IF) 또는 KernelExplainer (LOF, SVM) |
+| `status`                    | `"complete"` 또는 `"partial (n/20)"`               |
+| `n_segments_complete`       | 완료된 유닛 수                                     |
+| `n_segments_skipped`        | 이어하기로 스킵된 유닛 수                          |
+| `background_data`           | `"full (no subsampling)"`                          |
+| `global_feature_importance` | 6종 피처별 전체 유닛 평균 Mean \|SHAP\|            |
 
 ---
 

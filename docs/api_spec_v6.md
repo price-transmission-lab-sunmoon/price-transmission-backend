@@ -657,7 +657,7 @@
   },
 
   "ml_summary": {
-    "ml_vote": 2,
+    "ml_consensus_count": 2,
     "ml_detected": true,
     "if_anomaly": true,
     "if_score": -0.142,
