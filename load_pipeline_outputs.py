@@ -14,6 +14,9 @@ load_phase7.py 가 stat_timeseries, anomaly_results 만 적재한다.
   - breakpoints                ← processed/phase6/breakpoints/{cid}_{seg}_breakpoints.json
   - asymmetry_results          ← processed/phase7/pattern2/{cid}_{seg}_pattern2_asymmetry.csv
   - ml_scores                  ← processed/phase7_ml/predictions/{cid}_{seg}_ml_predictions.csv
+                                  + percentile 산출 (segment 단위, rank ascending=False)
+  - ml_projections             ← processed/phase7_ml/features/{cid}_{seg}_features.csv (+ PCA)
+                                  (cid, seg, period) × 3 model_name = 3행
   - raw_prices                 ← processed/merged/{cid}.csv (+ 2020=100 지수 산출)
   - data_freshness 갱신        ← baseline.json의 estimation_period_end (data_up_to)
 
@@ -73,6 +76,12 @@ def B(val):
     if isinstance(val, str):
         return val.strip().lower() in ("true", "1", "yes", "t")
     return bool(val)
+
+
+def BF(val):
+    """bool → False fallback (회신 v2 §2.2: *_anomaly null 금지)."""
+    res = B(val)
+    return False if res is None else res
 
 
 def S(val):
@@ -497,27 +506,53 @@ async def load_asymmetry(conn, run_id):
 # ─── ml_scores ────────────────────────────────────────────────────────────────
 
 async def load_ml_scores(conn, run_id):
+    """predictions CSV → ml_scores + percentile 산출.
+
+    회신 v2 §1.3: percentile = rank(pct=True, ascending=False) * 100, segment 단위.
+    3종 score 모두 'lower = more anomalous' → 동일 방향. 높을수록 이상.
+    회신 v2 §2.2: *_anomaly NaN → False 강제 (BF 사용).
+    """
     pred_dir = PHASE7_ML_DIR / "predictions"
     files = sorted(pred_dir.glob("*_ml_predictions.csv"))
     await conn.execute("DELETE FROM ml_scores")
-    rows = []
-    for f in files:
-        df = pd.read_csv(f, parse_dates=["date"])
-        for _, r in df.iterrows():
-            rows.append((
-                S(r["commodity_id"]),
-                S(r["segment"]),
-                r["date"].date() if hasattr(r["date"], "date") else r["date"],
-                F(r.get("if_score")), B(r.get("if_anomaly")), F(r.get("if_percentile")),
-                F(r.get("lof_score")), B(r.get("lof_anomaly")), F(r.get("lof_percentile")),
-                F(r.get("svm_score")), B(r.get("svm_anomaly")), F(r.get("svm_percentile")),
-                I(r.get("ml_consensus_count")) or 0,
-                B(r.get("ml_detected")) or False,
-                run_id,
-            ))
-    if not rows:
+
+    if not files:
         print("  SKIP ml_scores — predictions 폴더 비어있음")
         return 0
+
+    # 전 predictions 통합 후 segment 단위 percentile 산출
+    dfs = []
+    for f in files:
+        d = pd.read_csv(f, parse_dates=["date"])
+        d = d.rename(columns={"segment": "segment_id"})
+        dfs.append(d)
+    df = pd.concat(dfs, ignore_index=True)
+
+    grp = df.groupby(["commodity_id", "segment_id"])
+    for src, dst in (
+        ("if_score", "if_percentile"),
+        ("lof_score", "lof_percentile"),
+        ("svm_score", "svm_percentile"),
+    ):
+        if src in df.columns:
+            df[dst] = grp[src].rank(pct=True, ascending=False) * 100
+        else:
+            df[dst] = None
+
+    rows = []
+    for _, r in df.iterrows():
+        rows.append((
+            S(r["commodity_id"]),
+            S(r["segment_id"]),
+            r["date"].date() if hasattr(r["date"], "date") else r["date"],
+            F(r.get("if_score")), BF(r.get("if_anomaly")), F(r.get("if_percentile")),
+            F(r.get("lof_score")), BF(r.get("lof_anomaly")), F(r.get("lof_percentile")),
+            F(r.get("svm_score")), BF(r.get("svm_anomaly")), F(r.get("svm_percentile")),
+            I(r.get("ml_consensus_count")) or 0,
+            BF(r.get("ml_detected")),
+            run_id,
+        ))
+
     await conn.executemany(
         """
         INSERT INTO ml_scores (
@@ -532,7 +567,7 @@ async def load_ml_scores(conn, run_id):
         """,
         rows,
     )
-    print(f"  ml_scores: {len(rows)}행 ({len(files)}개 파일)")
+    print(f"  ml_scores: {len(rows)}행 ({len(files)}개 파일) + percentile 산출")
     return len(rows)
 
 
@@ -646,6 +681,152 @@ async def refresh_data_freshness(conn, run_id):
     return max_end
 
 
+# ─── ml_projections (PCA) ────────────────────────────────────────────────────
+
+_PCA_FEATURE_COLS = [
+    "transmission_rate", "upstream_pct", "downstream_pct",
+    "ect_or_spread", "exchange_rate_pct", "intl_price_usd_pct",
+]
+
+_MODEL_SCORE_MAP = [
+    # (model_name, score_col, anomaly_col)
+    ("isolation_forest", "if_score", "if_anomaly"),
+    ("lof", "lof_score", "lof_anomaly"),
+    ("ocsvm", "svm_score", "svm_anomaly"),
+]
+
+
+async def load_ml_projections(conn, run_id):
+    """features CSV → PCA(n=2) → ml_projections.
+
+    회신 v2 §6 ③: (cid, seg, period) × 3 model_name = 3행. 좌표 동일.
+    x_label="PC1", y_label="PC2" 고정. projection_method="pca".
+    """
+    from sklearn.decomposition import PCA
+    from sklearn.preprocessing import StandardScaler
+
+    feat_dir = PHASE7_ML_DIR / "features"
+    pred_dir = PHASE7_ML_DIR / "predictions"
+
+    await conn.execute("DELETE FROM ml_projections")
+
+    if not feat_dir.exists():
+        print("  SKIP ml_projections — features 폴더 없음")
+        return 0
+
+    feat_files = sorted(feat_dir.glob("*_features.csv"))
+    if not feat_files:
+        print("  SKIP ml_projections — features 폴더 비어있음")
+        return 0
+
+    feats = []
+    for f in feat_files:
+        d = pd.read_csv(f, parse_dates=["date"])
+        d = d.rename(columns={"segment": "segment_id"})
+        feats.append(d)
+    features_df = pd.concat(feats, ignore_index=True)
+
+    predictions_df = pd.DataFrame()
+    if pred_dir.exists():
+        preds = []
+        for f in sorted(pred_dir.glob("*_ml_predictions.csv")):
+            d = pd.read_csv(f, parse_dates=["date"])
+            d = d.rename(columns={"segment": "segment_id"})
+            preds.append(d)
+        if preds:
+            predictions_df = pd.concat(preds, ignore_index=True)
+
+    # segment 단위 PCA
+    proj_rows = []
+    for (cid, seg), grp in features_df.groupby(["commodity_id", "segment_id"]):
+        X = grp[_PCA_FEATURE_COLS].copy()
+        valid_mask = X.notna().all(axis=1)
+        X_valid = X[valid_mask]
+        if len(X_valid) < 2:
+            continue
+
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X_valid)
+        pca = PCA(n_components=2, random_state=42)
+        XY = pca.fit_transform(X_scaled)
+
+        dates = grp.loc[valid_mask, "date"].reset_index(drop=True)
+        for i, d in enumerate(dates):
+            proj_rows.append({
+                "commodity_id": cid,
+                "segment_id": seg,
+                "date": d.date() if hasattr(d, "date") else d,
+                "x_value": float(XY[i, 0]),
+                "y_value": float(XY[i, 1]),
+            })
+
+    if not proj_rows:
+        print("  SKIP ml_projections — 유효 관측치 없음")
+        return 0
+
+    proj_df = pd.DataFrame(proj_rows)
+
+    # predictions 머지 (없으면 score/anomaly 컬럼 비어있게 둠)
+    if not predictions_df.empty:
+        predictions_df["date"] = pd.to_datetime(predictions_df["date"]).dt.date
+        pred_sel = predictions_df[[
+            "commodity_id", "segment_id", "date",
+            "if_score", "if_anomaly",
+            "lof_score", "lof_anomaly",
+            "svm_score", "svm_anomaly",
+        ]].copy()
+        proj_df = proj_df.merge(
+            pred_sel, on=["commodity_id", "segment_id", "date"], how="left",
+        )
+    else:
+        for _, score_col, anom_col in _MODEL_SCORE_MAP:
+            proj_df[score_col] = None
+            proj_df[anom_col] = False
+
+    rows = []
+    for _, r in proj_df.iterrows():
+        base = (
+            S(r["commodity_id"]),
+            S(r["segment_id"]),
+            r["date"],
+            F(r["x_value"]),
+            F(r["y_value"]),
+            "PC1",  # x_label
+            "PC2",  # y_label
+            "pca",  # projection_method
+            run_id,
+        )
+        for model_name, score_col, anom_col in _MODEL_SCORE_MAP:
+            rows.append((
+                base[0], base[1], base[2],
+                model_name,
+                F(r.get(score_col)),
+                BF(r.get(anom_col)),
+                base[3], base[4],
+                base[5], base[6],
+                base[7], base[8],
+            ))
+
+    await conn.executemany(
+        """
+        INSERT INTO ml_projections (
+            commodity_id, segment_id, period,
+            model_name,
+            anomaly_score, is_anomaly,
+            x_value, y_value,
+            x_label, y_label,
+            projection_method,
+            pipeline_run_id
+        ) VALUES (
+            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12
+        )
+        """,
+        rows,
+    )
+    print(f"  ml_projections: {len(rows)}행 ({len(proj_df)} 관측치 × 3 model)")
+    return len(rows)
+
+
 # ─── 메인 ────────────────────────────────────────────────────────────────────
 
 async def main():
@@ -680,6 +861,7 @@ async def main():
 
         print("\n[Phase 7-ML]")
         await load_ml_scores(conn, run_id)
+        await load_ml_projections(conn, run_id)
 
         print("\n[Raw Prices]")
         await load_raw_prices(conn, run_id)
