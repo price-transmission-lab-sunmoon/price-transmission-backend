@@ -681,6 +681,16 @@
 }
 ```
 
+**`ml_summary` 필드 정책 (backend_reply_phase7ml_v2, 2026-05-24)**
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `ml_vote` / `ml_consensus_count` | number | 0~3. 탐지 모델 수. |
+| `ml_detected` | boolean | 앙상블 판정 (2종 이상). |
+| `if_anomaly`, `lof_anomaly`, `svm_anomaly` | **boolean** | 항상 `true` 또는 `false`. **`null` 송신 금지** (`MLScore` 미존재 시에도 `false`). |
+| `if_score`, `lof_score`, `svm_score` | `number \| null` | 모델별 이상 점수. **3종 모두 "낮을수록 이상"**. |
+| `if_percentile`, `lof_percentile`, `svm_percentile` | `number \| null` | 0~100. 백엔드 산출 (segment 내 점수 분포로 `rank(pct=True, ascending=False)*100`). **"높을수록 이상"** — UI 막대 길이를 percentile에 직접 매핑 가능. |
+
 **`stat_metrics` 신규 필드 (D-03)**
 
 | 필드 | 타입 | 설명 |
@@ -884,14 +894,20 @@
 
 패널 §ML 결과맵(web_plan_vN §6.3). 모델별 파라미터 분기.
 
-> **OI-15 보류**: `projection_method` 기본값 및 축 확정은 S4 스프린트 내.
+> **OI-15 해소** (backend_reply_phase7ml_v2, 2026-05-24): `projection_method="pca"` 확정. `x_label="PC1"`, `y_label="PC2"` 고정. `feature_direct`는 정의만 유지, 본 PR 미구현(빈 응답 fallback).
 
 **쿼리 파라미터**
 
 | 파라미터 | 타입 | 필수 | 기본값 | 설명 |
 |---|---|:---:|---|---|
 | `model` | string | **필수** | — | `"isolation_forest"` \| `"lof"` \| `"ocsvm"` |
-| `projection_method` | string | — | `"pca"` | `"pca"` \| `"feature_direct"` |
+| `projection_method` | string | — | `"pca"` | `"pca"` (적재됨) \| `"feature_direct"` (빈 응답) |
+
+**적재 정책**
+
+- 한 관측치당 `(cid, seg, period)` × 3 `model_name` = 3행. 좌표는 동일, `anomaly_score`/`is_anomaly`는 모델별 상이.
+- `is_highlight`: 해당 `anomaly_id`의 `period`와 일치하는 점만 `true` — 정확히 1개 (anomaly period에 해당 모델 좌표가 없으면 0개).
+- 데이터 부재 시 `total_points=0, points=[]` 빈 응답 (404 아님).
 
 **응답**
 

@@ -202,16 +202,17 @@ async def get_detail(anomaly_id: int, db: AsyncSession) -> AnomalyDetailResponse
         bp_dates=[_period_str(d) for d in (bp.bp_dates or [])] if bp else [],
     )
 
+    # backend_reply_phase7ml_v2 §2.2 — *_anomaly 항상 boolean. None → False 강제.
     ml_summary = MLSummary(
         ml_vote=int(ar.ml_vote or 0),
         ml_detected=bool(ar.ml_detected),
-        if_anomaly=bool(ml.if_anomaly) if ml and ml.if_anomaly is not None else ar.if_anomaly,
+        if_anomaly=bool(ml.if_anomaly) if (ml and ml.if_anomaly is not None) else bool(ar.if_anomaly),
         if_score=_f(ml.if_score) if ml else None,
         if_percentile=_f(ml.if_percentile) if ml else None,
-        lof_anomaly=bool(ml.lof_anomaly) if ml and ml.lof_anomaly is not None else ar.lof_anomaly,
+        lof_anomaly=bool(ml.lof_anomaly) if (ml and ml.lof_anomaly is not None) else bool(ar.lof_anomaly),
         lof_score=_f(ml.lof_score) if ml else None,
         lof_percentile=_f(ml.lof_percentile) if ml else None,
-        svm_anomaly=bool(ml.svm_anomaly) if ml and ml.svm_anomaly is not None else ar.svm_anomaly,
+        svm_anomaly=bool(ml.svm_anomaly) if (ml and ml.svm_anomaly is not None) else bool(ar.svm_anomaly),
         svm_score=_f(ml.svm_score) if ml else None,
         svm_percentile=_f(ml.svm_percentile) if ml else None,
     )
