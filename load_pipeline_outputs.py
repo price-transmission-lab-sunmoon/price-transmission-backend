@@ -14,6 +14,7 @@ load_phase7.py 가 stat_timeseries, anomaly_results 만 적재한다.
   - breakpoints                ← processed/phase6/breakpoints/{cid}_{seg}_breakpoints.json
   - asymmetry_results          ← processed/phase7/pattern2/{cid}_{seg}_pattern2_asymmetry.csv
   - ml_scores                  ← processed/phase7_ml/predictions/{cid}_{seg}_ml_predictions.csv
+  - raw_prices                 ← processed/merged/{cid}.csv (+ 2020=100 지수 산출)
   - data_freshness 갱신        ← baseline.json의 estimation_period_end (data_up_to)
 
 실행: python load_pipeline_outputs.py
@@ -38,6 +39,7 @@ PHASE5_DIR = DATA_DIR / "phase5"
 PHASE6_DIR = DATA_DIR / "phase6"
 PHASE7_DIR = DATA_DIR / "phase7"
 PHASE7_ML_DIR = DATA_DIR / "phase7_ml"
+MERGED_DIR = DATA_DIR / "merged"
 
 DB_URL = "postgresql://postgres:password@localhost:5432/price_transmission"
 
@@ -534,6 +536,88 @@ async def load_ml_scores(conn, run_id):
     return len(rows)
 
 
+# ─── raw_prices ──────────────────────────────────────────────────────────────
+
+_RAW_VALUE_COLS = [
+    "intl_price_usd", "intl_price_krw", "import_price_usd",
+    "exchange_rate", "ppi", "cpi", "wholesale_price",
+]
+# 2020=100 지수가 산출되는 컬럼들 (raw_prices 테이블의 *_idx 컬럼과 매핑)
+_INDEX_COLS = {
+    "intl_price_krw":  "intl_price_krw_idx",
+    "import_price_usd": "import_price_idx",
+    "ppi":             "ppi_idx",
+    "cpi":             "cpi_idx",
+    "wholesale_price": "wholesale_price_idx",
+}
+
+
+def _compute_2020_index(df: pd.DataFrame, value_col: str) -> pd.Series:
+    """2020년 1~12월 평균=100 기준 지수 산출. 2020 데이터 없으면 NaN."""
+    mask_2020 = pd.to_datetime(df["date"]).dt.year == 2020
+    base = df.loc[mask_2020, value_col].mean()
+    if pd.isna(base) or base == 0:
+        return pd.Series([math.nan] * len(df), index=df.index)
+    return df[value_col] / base * 100.0
+
+
+async def load_raw_prices(conn, run_id):
+    files = sorted(MERGED_DIR.glob("*.csv"))
+    # all_commodities.csv 제외 — 품목별 파일만 사용
+    files = [f for f in files if f.stem != "all_commodities"]
+    if not files:
+        print(f"  SKIP raw_prices — {MERGED_DIR} 비어있음")
+        return 0
+    await conn.execute("DELETE FROM raw_prices")
+    total = 0
+    for f in files:
+        df = pd.read_csv(f, encoding="utf-8-sig", parse_dates=["date"])
+        # 2020=100 지수 산출 (각 소스별)
+        for val_col, idx_col in _INDEX_COLS.items():
+            if val_col in df.columns:
+                df[idx_col] = _compute_2020_index(df, val_col)
+            else:
+                df[idx_col] = math.nan
+
+        # 누락된 source 컬럼 보충 (예: 3구간 품목 wholesale_price 없음)
+        for c in _RAW_VALUE_COLS:
+            if c not in df.columns:
+                df[c] = math.nan
+
+        rows = []
+        for _, r in df.iterrows():
+            period = r["date"].date() if hasattr(r["date"], "date") else r["date"]
+            rows.append((
+                S(r["commodity_id"]), period,
+                F(r["intl_price_usd"]), F(r["intl_price_krw"]),
+                F(r["import_price_usd"]),
+                F(r["exchange_rate"]),
+                F(r["ppi"]), F(r["cpi"]), F(r["wholesale_price"]),
+                F(r["intl_price_krw_idx"]),
+                F(r["import_price_idx"]),
+                F(r["ppi_idx"]), F(r["cpi_idx"]),
+                F(r["wholesale_price_idx"]),
+            ))
+        await conn.executemany(
+            """
+            INSERT INTO raw_prices (
+                commodity_id, period,
+                intl_price_usd, intl_price_krw, import_price_usd,
+                exchange_rate, ppi, cpi, wholesale_price,
+                intl_price_krw_idx, import_price_idx,
+                ppi_idx, cpi_idx, wholesale_price_idx
+            ) VALUES (
+                $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14
+            )
+            """,
+            rows,
+        )
+        total += len(rows)
+        print(f"    OK {f.stem}: {len(rows)} rows")
+    print(f"  raw_prices total {total}행")
+    return total
+
+
 # ─── data_freshness ──────────────────────────────────────────────────────────
 
 async def refresh_data_freshness(conn, run_id):
@@ -596,6 +680,9 @@ async def main():
 
         print("\n[Phase 7-ML]")
         await load_ml_scores(conn, run_id)
+
+        print("\n[Raw Prices]")
+        await load_raw_prices(conn, run_id)
 
         print("\n[data_freshness 갱신]")
         await refresh_data_freshness(conn, run_id)

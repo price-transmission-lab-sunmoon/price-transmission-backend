@@ -57,6 +57,8 @@ class EventItem(BaseModel):
     start_date: str    # YYYY-MM
     end_date: str      # YYYY-MM
     color_hex: str
+    # v2 (2026-05-21): 사건이 영향을 미치는 품목 목록. NULL/생략 = 전 품목.
+    commodities: list[str] | None = None
 
     @field_validator("start_date", "end_date", mode="before")
     @classmethod

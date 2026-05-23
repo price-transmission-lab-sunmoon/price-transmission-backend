@@ -227,13 +227,14 @@ async def get_events(db: AsyncSession) -> tuple[EventListResponse, str]:
             start_date=r.start_date,
             end_date=r.end_date,
             color_hex=r.color_hex,
+            commodities=list(r.commodities) if r.commodities else None,
         )
         for r in rows
     ]
     response = EventListResponse(events=items)
 
-    if _events_etag is None:
-        _events_etag = _compute_etag(response.model_dump())
+    # commodities 추가로 ETag 갱신 필요 — 매 호출 재계산
+    _events_etag = _compute_etag(response.model_dump())
 
     return response, _events_etag
 
