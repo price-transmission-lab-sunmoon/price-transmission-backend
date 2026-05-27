@@ -34,6 +34,8 @@ from app.db.loader.phase3 import load_cointegration_results
 from app.db.loader.phase4 import load_phase4
 from app.db.loader.phase5 import load_granger_results
 from app.db.loader.phase6 import load_phase6
+from app.db.loader.phase7 import load_phase7
+from app.db.loader.phase7_ml import load_phase7_ml
 
 logger = logging.getLogger(__name__)
 
@@ -60,9 +62,16 @@ async def run_pipeline(
 
     results: dict = {"run_id": run_id, "phases": {}}
 
+    def _phase_order_key(p: str) -> tuple[int, int]:
+        """'2'~'7'은 (n, 0). '7-ml'은 (7, 1) — Phase 7 직후 순서로 정렬."""
+        if "-" in p:
+            base, _ = p.split("-", 1)
+            return (int(base), 1)
+        return (int(p), 0)
+
     def _completed_phases() -> list[str]:
         """현재까지 완료된 Phase 번호 목록 (D-17 재시작 기준)."""
-        return [str(p) for p in sorted(results["phases"].keys(), key=int)]
+        return [str(p) for p in sorted(results["phases"].keys(), key=_phase_order_key)]
 
     # ── Phase 2 ───────────────────────────────────────────────────────────────
     try:
@@ -121,6 +130,30 @@ async def run_pipeline(
         counts = await load_phase6(session, run_id)
         results["phases"]["6"] = counts
         await append_phase_to_run(session, run_id, "6")
+    except DBError as exc:
+        await update_pipeline_run_status(
+            session, run_id, "failed",
+            phases_run=_completed_phases() or None,
+            error_message=str(exc),
+        )
+        raise
+
+    # ── Phase 7 ───────────────────────────────────────────────────────────────
+    try:
+        counts = await load_phase7(session, run_id)
+        results["phases"]["7"] = counts
+    except DBError as exc:
+        await update_pipeline_run_status(
+            session, run_id, "failed",
+            phases_run=_completed_phases() or None,
+            error_message=str(exc),
+        )
+        raise
+
+    # ── Phase 7-ML ────────────────────────────────────────────────────────────
+    try:
+        counts = await load_phase7_ml(session, run_id)
+        results["phases"]["7-ml"] = counts
     except DBError as exc:
         await update_pipeline_run_status(
             session, run_id, "failed",

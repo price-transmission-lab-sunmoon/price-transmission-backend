@@ -80,15 +80,16 @@ class StatMetrics(BaseModel):
 
 
 class MLSummary(BaseModel):
+    # backend_reply_phase7ml_v2 §2.3 — *_anomaly: 항상 boolean (null 금지)
     ml_vote: int = 0
     ml_detected: bool = False
-    if_anomaly: bool | None = None
+    if_anomaly: bool = False
     if_score: float | None = None
     if_percentile: float | None = None
-    lof_anomaly: bool | None = None
+    lof_anomaly: bool = False
     lof_score: float | None = None
     lof_percentile: float | None = None
-    svm_anomaly: bool | None = None
+    svm_anomaly: bool = False
     svm_score: float | None = None
     svm_percentile: float | None = None
 

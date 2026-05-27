@@ -51,7 +51,8 @@ async def _run_phase(phase: str, run_id: int) -> None:
 
     Phase 0~1: 데이터 수집·전처리 (pipeline.preprocessing)
     Phase 2~6: 계량경제 분석 계산 후 DB 적재 (app.db.loader)
-    Phase 7, 7-ml: 이상 탐지·ML (미구현 — skip)
+    Phase 7:    pattern1/2/3 + integrate → stat_timeseries + anomaly_results 적재
+    Phase 7-ml: phase7_ml_run → ml_scores 적재 (percentile 산출 포함)
     """
     root = Path(settings.pipeline_data_root)
 
@@ -153,12 +154,34 @@ async def _run_phase(phase: str, run_id: int) -> None:
         async with AsyncSessionLocal() as session:
             await load_phase6(session, run_id)
 
-    elif phase in ("7", "7-ml"):
-        # Phase 7 이상 탐지·ML — 미구현 (phase7-stat 완료 후 연결 예정)
-        logger.info(
-            f"Phase {phase} 미구현 — skip",
-            extra={"error_code": "BATCH", "context": {"phase": phase, "run_id": run_id}},
+    elif phase == "7":
+        from pipeline.preprocessing.Phase7.phase7_pattern1 import run_pattern1
+        from pipeline.preprocessing.Phase7.phase7_pattern2 import run_pattern2
+        from pipeline.preprocessing.Phase7.phase7_pattern3 import run_pattern3
+        from pipeline.preprocessing.Phase7.phase7_integrate import run_integrate
+        from app.db.loader.phase7 import load_phase7
+
+        data_dir = str(root)
+        output_dir = str(root / "phase7")
+        await loop.run_in_executor(None, _call_pipeline, run_pattern1, data_dir, output_dir)
+        await loop.run_in_executor(None, _call_pipeline, run_pattern2, data_dir, output_dir)
+        await loop.run_in_executor(None, _call_pipeline, run_pattern3, data_dir, output_dir)
+        await loop.run_in_executor(None, _call_pipeline, run_integrate, data_dir, output_dir)
+        async with AsyncSessionLocal() as session:
+            await load_phase7(session, run_id)
+
+    elif phase == "7-ml":
+        from pipeline.preprocessing.Phase7.phase7_ml_run import run_phase7_ml
+        from app.db.loader.phase7_ml import load_phase7_ml
+
+        data_dir = str(root)
+        phase7_dir = str(root / "phase7")
+        output_dir = str(root / "phase7_ml")
+        await loop.run_in_executor(
+            None, _call_pipeline, run_phase7_ml, data_dir, phase7_dir, output_dir,
         )
+        async with AsyncSessionLocal() as session:
+            await load_phase7_ml(session, run_id)
 
     else:
         logger.warning(

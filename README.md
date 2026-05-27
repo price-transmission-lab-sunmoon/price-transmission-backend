@@ -72,15 +72,15 @@ KAMIS_CERT_ID=
 alembic upgrade head
 
 # 개발 서버 (hot-reload)
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 
 # 프로덕션
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+uvicorn app.main:app --host 0.0.0.0 --port 8001 --workers 4
 ```
 
 서버 기동 후 확인:
-- Swagger UI: `http://localhost:8000/docs`
-- 헬스체크: `GET http://localhost:8000/api/v1/meta/config`
+- Swagger UI: `http://localhost:8001/docs`
+- 헬스체크: `GET http://localhost:8001/api/v1/meta/config`
 
 ---
 
@@ -202,16 +202,55 @@ data/processed/phase6/
 └── phase6_summary.csv
 ```
 
-### Phase 2~6 DB 적재 (배치 수동 트리거)
+### Phase 7 — 이상 패턴 탐지 (통계)
+
+```bash
+python -m pipeline.preprocessing.Phase7.phase7_pattern1
+python -m pipeline.preprocessing.Phase7.phase7_pattern2
+python -m pipeline.preprocessing.Phase7.phase7_pattern3
+python -m pipeline.preprocessing.Phase7.phase7_integrate
+```
+
+**출력 경로:**
+
+```
+data/processed/phase7/
+├── pattern1/{cid}_{seg}_pattern1.csv
+├── pattern2/{cid}_{seg}_pattern2_zscore.csv
+├── pattern2/{cid}_{seg}_pattern2_asymmetry.csv
+├── pattern3/{cid}_{seg}_pattern3.csv
+├── stat_timeseries/{cid}_{seg}_stat_timeseries.csv
+└── phase7_summary.csv
+```
+
+### Phase 7-ML — ML 보조 교차검증
+
+```bash
+python -m pipeline.preprocessing.Phase7.phase7_ml_run
+```
+
+**출력 경로:**
+
+```
+data/processed/phase7_ml/
+├── features/{cid}_{seg}_features.csv
+├── predictions/{cid}_{seg}_ml_predictions.csv
+├── cross_validation/{cid}_{seg}_cross_val.csv
+├── confidence_grades/{cid}_{seg}_grades.csv
+├── models/{YYYYMMDD_HHMM}/...pkl + run_log_*.json
+└── phase7_ml_summary.csv
+```
+
+### Phase 2~7-ml DB 적재 (배치 수동 트리거)
 
 파이프라인 계산이 완료된 후 DB에 적재하려면:
 
 ```bash
 # 서버 실행 후 수동 배치 트리거
-curl -X POST http://localhost:8000/api/v1/admin/batch/trigger
+curl -X POST http://localhost:8001/api/v1/admin/batch/trigger
 
 # 또는 전체 파이프라인 계산 + 적재 일괄 실행
-curl -X POST http://localhost:8000/api/v1/admin/batch/trigger
+curl -X POST http://localhost:8001/api/v1/admin/batch/trigger
 ```
 
 ### 전체 파이프라인 순차 실행
@@ -238,8 +277,17 @@ python -m pipeline.preprocessing.phase5_granger_causality
 # Phase 6: 구조 변화
 python -m pipeline.preprocessing.phase6_structural_breaks
 
+# Phase 7: 이상 패턴 탐지 (통계)
+python -m pipeline.preprocessing.Phase7.phase7_pattern1
+python -m pipeline.preprocessing.Phase7.phase7_pattern2
+python -m pipeline.preprocessing.Phase7.phase7_pattern3
+python -m pipeline.preprocessing.Phase7.phase7_integrate
+
+# Phase 7-ML: ML 보조 교차검증
+python -m pipeline.preprocessing.Phase7.phase7_ml_run
+
 # DB 적재 (서버 실행 상태에서)
-curl -X POST http://localhost:8000/api/v1/admin/batch/trigger
+curl -X POST http://localhost:8001/api/v1/admin/batch/trigger
 ```
 
 ---
@@ -248,14 +296,14 @@ curl -X POST http://localhost:8000/api/v1/admin/batch/trigger
 
 | 목적 | 명령 |
 |---|---|
-| 개발 서버 | `uvicorn app.main:app --reload --port 8000` |
+| 개발 서버 | `uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload` |
 | DB 마이그레이션 적용 | `alembic upgrade head` |
 | 마이그레이션 1단계 롤백 | `alembic downgrade -1` |
 | 테스트 실행 | `pytest` |
 | 특정 테스트 파일 | `pytest tests/test_api_reference.py -v` |
 | 린트 | `ruff check .` |
 | 포맷 | `ruff format .` |
-| 수동 배치 트리거 | `curl -X POST http://localhost:8000/api/v1/admin/batch/trigger` |
+| 수동 배치 트리거 | `curl -X POST http://localhost:8001/api/v1/admin/batch/trigger` |
 | pipeline_runs 상태 확인 | `psql -c "SELECT * FROM pipeline_runs ORDER BY id DESC LIMIT 5;"` |
 
 ---
@@ -365,12 +413,16 @@ docs/                        명세 문서 (버전 관리: docs_manifest.md)
 ```
 Phase 0 → Phase 1 → Phase 2 (+DB 적재) → Phase 3 (+DB 적재)
 → Phase 4 (+DB 적재) → Phase 5 (+DB 적재) → Phase 6 (+DB 적재)
-→ Phase 7 (미구현, skip) → Phase 7-ml (미구현, skip)
+→ Phase 7 (pattern1/2/3 + integrate, +DB 적재)
+→ Phase 7-ml (phase7_ml_run, +DB 적재)
 → data_freshness 갱신 → Redis 캐시 무효화
 ```
 
-Phase 2~6은 계산 완료 직후 DB 적재가 이루어집니다.  
-Phase 7, 7-ml은 `phase7-stat` 구현 완료 후 연결됩니다.
+Phase 2~7-ml 모두 계산 완료 직후 DB 적재가 이루어집니다.  
+
+- Phase 7 적재 테이블: `stat_timeseries`, `anomaly_results`
+- Phase 7-ml 적재 테이블: `ml_scores` (`if_percentile`/`lof_percentile`/`svm_percentile`은 segment 단위 백엔드 산출)
+- ML 결과맵(`ml_projections`)은 별도 PR(③)에서 활성화 예정.
 
 ### 배치 완료 확인
 
@@ -384,7 +436,7 @@ psql -U user -d price_transmission -c \
   "SELECT data_up_to, next_run_date, last_updated FROM data_freshness;"
 
 # Redis 캐시 무효화 후 응답 확인
-curl http://localhost:8000/api/v1/commodities/wheat/stream
+curl http://localhost:8001/api/v1/commodities/wheat/stream
 ```
 
 ---
