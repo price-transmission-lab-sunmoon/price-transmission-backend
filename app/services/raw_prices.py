@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import date
-from typing import Literal
 
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +15,6 @@ from app.core.exceptions import APIError
 from app.db.models.anomaly import AnomalyResult
 from app.db.models.timeseries import MvAnomalyDensityYearly, RawPrice, StatTimeseries
 from app.schemas.timeseries import (
-    AnomalyDensityPoint,
     RawPriceAnomalyNode,
     RawPriceDataPoint,
     RawPriceSeries,
@@ -25,13 +23,8 @@ from app.schemas.timeseries import (
     StreamDataPoint,
     TransmissionOverlaySeries,
 )
-from app.services.stream import (
-    _aggregate_monthly_points,
-    _clamp_range,
-    _parse_yyyymm,
-    _safe_float,
-    _safe_period,
-)
+from app.services.aggregation import aggregate_by_granularity, build_anomaly_density
+from app.services.stream import _clamp_range, _parse_yyyymm, _safe_float, _safe_period
 
 # ── 소스 메타데이터 ─────────────────────────────────────────────────────────────
 
@@ -92,47 +85,54 @@ def _resolve_sources(layout: int, route_type: str, commodity_id: str) -> list[st
     return _LAYOUT_SOURCES_4SEG[layout]
 
 
-def _aggregate_raw_monthly(
-    monthly: list[dict],
-    granularity: Literal["monthly", "quarterly", "yearly"],
-) -> list[dict]:
-    """raw_prices 월 포인트 → granularity 집계.
+def _build_transmission_overlay(
+    ts_rows,
+    anomaly_rows,
+    commodity_segments: list[str],
+    granularity: str,
+) -> list[TransmissionOverlaySeries]:
+    """stat_timeseries 행 → 구간별 전이율 오버레이 (raw-prices 레이아웃 2~6).
 
-    각 dict: {period: date, value, index_2020, has_anomaly: bool, anomaly_ids: list}
+    get_raw_prices / get_raw_prices_minimap 양쪽에서 동일했던 조립 로직 통합.
     """
-    if granularity == "monthly":
-        return monthly
+    seg_anomaly: dict[tuple[str, date], list[int]] = defaultdict(list)
+    for ar in anomaly_rows:
+        seg_anomaly[(ar.segment_id, ar.period)].append(ar.id)
 
-    from app.services.stream import _quarter_key, _quarter_last_month
-
-    if granularity == "quarterly":
-        key_fn = _quarter_key
-        period_fn = lambda k: _quarter_last_month(k[0], k[1])
-    else:  # yearly
-        key_fn = lambda p: p["period"].year
-        period_fn = lambda k: date(k, 12, 1)
-
-    groups: dict = defaultdict(list)
-    for p in monthly:
-        groups[key_fn(p)].append(p)
-
-    result: list[dict] = []
-    for k in sorted(groups):
-        grp = groups[k]
-
-        def avg(field: str) -> float | None:
-            vals = [p[field] for p in grp if p[field] is not None]
-            return sum(vals) / len(vals) if vals else None
-
-        all_ids = [aid for p in grp for aid in p["anomaly_ids"]]
-        result.append({
-            "period": period_fn(k),
-            "value": avg("value"),
-            "index_2020": avg("index_2020"),
-            "has_anomaly": any(p["has_anomaly"] for p in grp),
-            "anomaly_ids": all_ids,
+    seg_ts: dict[str, list[dict]] = defaultdict(list)
+    for row in ts_rows:
+        ids = seg_anomaly.get((row.segment_id, row.period), [])
+        seg_ts[row.segment_id].append({
+            "period": row.period,
+            "transmission_rate": _safe_float(row.transmission_rate, "stat_timeseries", "transmission_rate"),
+            "upstream_pct": _safe_float(row.upstream_pct, "stat_timeseries", "upstream_pct"),
+            "downstream_pct": _safe_float(row.downstream_pct, "stat_timeseries", "downstream_pct"),
+            "in_warmup_period": bool(row.in_warmup_period),
+            "anomaly_ids": ids,
         })
-    return result
+
+    overlay: list[TransmissionOverlaySeries] = []
+    for seg_id in commodity_segments:
+        aggregated_seg = aggregate_by_granularity(
+            seg_ts.get(seg_id, []), granularity,
+            avg_fields=("transmission_rate", "upstream_pct", "downstream_pct"),
+            any_fields=("in_warmup_period",),
+            concat_fields=("anomaly_ids",),
+        )
+        points = [
+            StreamDataPoint(
+                period=_safe_period(p["period"], "stat_timeseries", "period"),
+                transmission_rate=p["transmission_rate"],
+                upstream_pct=p["upstream_pct"],
+                downstream_pct=p["downstream_pct"],
+                in_warmup_period=p["in_warmup_period"],
+                has_anomaly=bool(p["anomaly_ids"]),
+                anomaly_ids=p["anomaly_ids"],
+            )
+            for p in aggregated_seg
+        ]
+        overlay.append(TransmissionOverlaySeries(segment_id=seg_id, data=points))
+    return overlay
 
 
 # ── /raw-prices ────────────────────────────────────────────────────────────────
@@ -273,7 +273,12 @@ async def get_raw_prices(
                 "anomaly_ids": ids,
             })
 
-        aggregated = _aggregate_raw_monthly(monthly, granularity)
+        aggregated = aggregate_by_granularity(
+            monthly, granularity,
+            avg_fields=("value", "index_2020"),
+            any_fields=("has_anomaly",),
+            concat_fields=("anomaly_ids",),
+        )
         points = [
             RawPriceDataPoint(
                 period=_safe_period(p["period"], "raw_prices", "period"),
@@ -316,40 +321,9 @@ async def get_raw_prices(
                 public_code="INTERNAL_ERROR",
             ) from e
 
-        seg_ts: dict[str, list[dict]] = defaultdict(list)
-        seg_anomaly: dict[tuple[str, date], list[int]] = defaultdict(list)
-        for ar in anomaly_rows:
-            seg_anomaly[(ar.segment_id, ar.period)].append(ar.id)
-
-        for row in ts_rows:
-            ids = seg_anomaly.get((row.segment_id, row.period), [])
-            seg_ts[row.segment_id].append({
-                "period": row.period,
-                "transmission_rate": _safe_float(row.transmission_rate, "stat_timeseries", "transmission_rate"),
-                "upstream_pct": _safe_float(row.upstream_pct, "stat_timeseries", "upstream_pct"),
-                "downstream_pct": _safe_float(row.downstream_pct, "stat_timeseries", "downstream_pct"),
-                "in_warmup_period": bool(row.in_warmup_period),
-                "anomaly_ids": ids,
-            })
-
-        for seg_id in commodity_segments:
-            monthly_seg = seg_ts.get(seg_id, [])
-            aggregated_seg = _aggregate_monthly_points(monthly_seg, granularity)
-            overlay_points = [
-                StreamDataPoint(
-                    period=_safe_period(p["period"], "stat_timeseries", "period"),
-                    transmission_rate=p["transmission_rate"],
-                    upstream_pct=p["upstream_pct"],
-                    downstream_pct=p["downstream_pct"],
-                    in_warmup_period=p["in_warmup_period"],
-                    has_anomaly=bool(p["anomaly_ids"]),
-                    anomaly_ids=p["anomaly_ids"],
-                )
-                for p in aggregated_seg
-            ]
-            transmission_overlay.append(
-                TransmissionOverlaySeries(segment_id=seg_id, data=overlay_points)
-            )
+        transmission_overlay = _build_transmission_overlay(
+            ts_rows, anomaly_rows, commodity_segments, granularity
+        )
 
     # 9. anomaly_nodes 조립 (항상 월 단위)
     anomaly_nodes: list[RawPriceAnomalyNode] = [
@@ -473,7 +447,12 @@ async def get_raw_prices_minimap(
                 "anomaly_ids": ids,
             })
 
-        aggregated = _aggregate_raw_monthly(monthly, "yearly")
+        aggregated = aggregate_by_granularity(
+            monthly, "yearly",
+            avg_fields=("value", "index_2020"),
+            any_fields=("has_anomaly",),
+            concat_fields=("anomaly_ids",),
+        )
         points = [
             RawPriceDataPoint(
                 period=_safe_period(p["period"], "raw_prices", "period"),
@@ -510,40 +489,9 @@ async def get_raw_prices_minimap(
                 public_code="INTERNAL_ERROR",
             ) from e
 
-        seg_ts: dict[str, list[dict]] = defaultdict(list)
-        seg_anomaly: dict[tuple[str, date], list[int]] = defaultdict(list)
-        for ar in anomaly_rows:
-            seg_anomaly[(ar.segment_id, ar.period)].append(ar.id)
-
-        for row in ts_rows:
-            ids = seg_anomaly.get((row.segment_id, row.period), [])
-            seg_ts[row.segment_id].append({
-                "period": row.period,
-                "transmission_rate": _safe_float(row.transmission_rate, "stat_timeseries", "transmission_rate"),
-                "upstream_pct": _safe_float(row.upstream_pct, "stat_timeseries", "upstream_pct"),
-                "downstream_pct": _safe_float(row.downstream_pct, "stat_timeseries", "downstream_pct"),
-                "in_warmup_period": bool(row.in_warmup_period),
-                "anomaly_ids": ids,
-            })
-
-        for seg_id in commodity_segments:
-            monthly_seg = seg_ts.get(seg_id, [])
-            aggregated_seg = _aggregate_monthly_points(monthly_seg, "yearly")
-            overlay_points = [
-                StreamDataPoint(
-                    period=_safe_period(p["period"], "stat_timeseries", "period"),
-                    transmission_rate=p["transmission_rate"],
-                    upstream_pct=p["upstream_pct"],
-                    downstream_pct=p["downstream_pct"],
-                    in_warmup_period=p["in_warmup_period"],
-                    has_anomaly=bool(p["anomaly_ids"]),
-                    anomaly_ids=p["anomaly_ids"],
-                )
-                for p in aggregated_seg
-            ]
-            transmission_overlay.append(
-                TransmissionOverlaySeries(segment_id=seg_id, data=overlay_points)
-            )
+        transmission_overlay = _build_transmission_overlay(
+            ts_rows, anomaly_rows, commodity_segments, "yearly"
+        )
 
     # 7. anomaly_nodes (항상 월 단위)
     anomaly_nodes: list[RawPriceAnomalyNode] = [
@@ -559,24 +507,7 @@ async def get_raw_prices_minimap(
     ]
 
     # 8. 연도별 밀도 집계 (구간 합산)
-    year_density: dict[int, dict] = {}
-    for dr in density_rows:
-        y = int(dr.year)
-        if y not in year_density:
-            year_density[y] = {"high_count": 0, "medium_count": 0, "reference_count": 0}
-        year_density[y]["high_count"] += int(dr.high_count or 0)
-        year_density[y]["medium_count"] += int(dr.medium_count or 0)
-        year_density[y]["reference_count"] += int(dr.reference_count or 0)
-
-    anomaly_density = [
-        AnomalyDensityPoint(
-            period=str(y),
-            high_count=v["high_count"],
-            medium_count=v["medium_count"],
-            reference_count=v["reference_count"],
-        )
-        for y, v in sorted(year_density.items())
-    ]
+    anomaly_density = build_anomaly_density(density_rows)
 
     return RawPricesMinimapResponse(
         commodity_id=commodity_id,

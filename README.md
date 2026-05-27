@@ -401,7 +401,7 @@ data/
 
 alembic/                     DB 마이그레이션 (7개 revision)
 tests/                       pytest 테스트 (DB·Redis 없이 실행 가능)
-docs/                        명세 문서 (버전 관리: docs_manifest.md)
+docs/                        명세 문서 (버전 관리: docs_manifest_v3.md)
 ```
 
 ---
@@ -474,13 +474,13 @@ ORIGIN  [DB-CONN-002] SQLAlchemy async pool 고갈 | context: {pool_size=10, act
 
 ## 참조 문서
 
-**버전 관리 단일 출처 (SoT)**: [`docs/docs_manifest.md`](docs/docs_manifest.md)
+**버전 관리 단일 출처 (SoT)**: [`docs/docs_manifest_v3.md`](docs/docs_manifest_v3.md)
 
 | 파일 | 설명 |
 |---|---|
-| `docs/api_spec_v5.md` | API 엔드포인트 명세 |
-| `docs/db_schema_v5.md` | DB 스키마 명세 |
+| `docs/api_spec_v6.md` | API 엔드포인트 명세 |
+| `docs/db_schema_v6.md` | DB 스키마 명세 |
 | `docs/exception_spec_v6.md` | 예외 코드 인덱스 (디버깅용) |
 | `docs/exception_design_v3.md` | 예외 체이닝 설계 (심층 분석용) |
-| `docs/pipeline_output_spec_v7.md` | 파이프라인 출력 명세 |
-| `docs/feature_dev_list_v4.md` | feat/* 브랜치 기능 목록 |
+| `docs/pipeline_output_spec_v9.md` | 파이프라인 출력 명세 |
+| `docs/feature_dev_list_v5.md` | feat/* 브랜치 기능 목록 |

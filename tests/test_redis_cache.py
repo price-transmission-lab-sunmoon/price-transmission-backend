@@ -13,12 +13,17 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
+from pydantic import BaseModel
 
-from app.cache.redis import cache_delete_pattern, cache_get, cache_set
-
+from app.cache.redis import (
+    cache_delete_pattern,
+    cache_get,
+    cache_set,
+    cached_or_compute,
+)
 
 # ── 헬퍼: 가짜 Redis 클라이언트 ───────────────────────────────────────────────
 
@@ -234,3 +239,72 @@ async def test_invalidate_cache_deletes_all_three_patterns():
     assert f"{prefix}:raw-prices:*" in deleted_patterns
     assert f"{prefix}:stat-series:*" in deleted_patterns
     assert len(deleted_patterns) == 3
+
+
+# ── cached_or_compute 테스트 (엔드포인트 HIT/MISS 헬퍼) ───────────────────────
+
+class _Toy(BaseModel):
+    x: int
+
+
+@pytest.mark.asyncio
+async def test_cached_or_compute_miss_calls_compute_and_sets():
+    """MISS → compute() 실행 + 결과 캐시 적재."""
+    store: dict[str, str] = {}
+    client = AsyncMock()
+
+    async def fake_get(key):
+        return store.get(key)
+
+    async def fake_set(key, value, ex=None):
+        store[key] = value
+
+    client.get.side_effect = fake_get
+    client.set.side_effect = fake_set
+
+    calls: list[int] = []
+
+    async def compute():
+        calls.append(1)
+        return _Toy(x=7)
+
+    result = await cached_or_compute(client, "k", _Toy, compute)
+    assert result.x == 7
+    assert calls == [1]       # compute 1회 실행
+    assert "k" in store       # 캐시 적재됨
+
+
+@pytest.mark.asyncio
+async def test_cached_or_compute_hit_skips_compute():
+    """HIT(검증 통과) → compute() 미실행."""
+    client = _make_redis(get_return=json.dumps({"x": 5}))
+
+    calls: list[int] = []
+
+    async def compute():
+        calls.append(1)
+        return _Toy(x=0)
+
+    result = await cached_or_compute(client, "k", _Toy, compute)
+    assert result.x == 5
+    assert calls == []        # compute 미실행
+
+
+@pytest.mark.asyncio
+async def test_cached_or_compute_invalid_cache_falls_back(caplog):
+    """HIT 값 스키마 불일치(PARSE-REDIS-001) → 캐시 삭제 + compute 폴백."""
+    client = _make_redis(get_return=json.dumps({"y": "bad"}))  # x 누락
+    client.delete.return_value = 1
+
+    calls: list[int] = []
+
+    async def compute():
+        calls.append(1)
+        return _Toy(x=9)
+
+    with caplog.at_level("WARNING"):
+        result = await cached_or_compute(client, "k", _Toy, compute)
+    assert result.x == 9
+    assert calls == [1]
+    assert "PARSE-REDIS-001" in caplog.text
+    client.delete.assert_called_once_with("k")

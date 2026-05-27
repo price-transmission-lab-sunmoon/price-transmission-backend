@@ -3,8 +3,11 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Awaitable, Callable
+from typing import TypeVar
 
 import redis.asyncio as aioredis
+from pydantic import BaseModel, ValidationError
 
 from app.core.config import settings
 
@@ -45,6 +48,12 @@ async def close_redis() -> None:
         _redis_client = None
 
 
+def _redacted_redis_url() -> str:
+    """접속 URL에서 자격증명(user:pass@) 제거 — 로그 노출 방지."""
+    url = settings.redis_url
+    return url.split("@")[-1] if "@" in url else url
+
+
 # ── 캐시 헬퍼 함수 ────────────────────────────────────────────────────────────
 # feature_spec_BE-REDIS_v2 §1.2 데이터 흐름 / §5 예외처리 대응
 
@@ -59,7 +68,7 @@ async def cache_get(client: aioredis.Redis, key: str) -> dict | None:
     try:
         raw: str | None = await client.get(key)
     except Exception as e:
-        redis_url_redacted = settings.redis_url.split("@")[-1] if "@" in settings.redis_url else settings.redis_url
+        redis_url_redacted = _redacted_redis_url()
         logger.warning(
             "Redis 연결 실패 — 캐시 없이 DB 직접 조회 (DB-CACHE-001)",
             extra={
@@ -77,7 +86,7 @@ async def cache_get(client: aioredis.Redis, key: str) -> dict | None:
 
     try:
         return json.loads(raw)
-    except (json.JSONDecodeError, ValueError) as e:
+    except (json.JSONDecodeError, ValueError):
         logger.warning(
             "Redis 캐시 JSON 역직렬화 실패 — 해당 키 삭제 후 DB 재조회 (DB-CACHE-002)",
             extra={
@@ -103,7 +112,7 @@ async def cache_set(client: aioredis.Redis, key: str, value: dict, ttl: int) -> 
     try:
         await client.set(key, json.dumps(value, ensure_ascii=False), ex=ttl)
     except Exception as e:
-        redis_url_redacted = settings.redis_url.split("@")[-1] if "@" in settings.redis_url else settings.redis_url
+        redis_url_redacted = _redacted_redis_url()
         logger.warning(
             "Redis 캐시 쓰기 실패 — 캐시 저장 생략 (DB-CACHE-001)",
             extra={
@@ -138,7 +147,7 @@ async def cache_delete_pattern(client: aioredis.Redis, pattern: str) -> int:
             await client.delete(*keys)
         return len(keys)
     except Exception as e:
-        redis_url_redacted = settings.redis_url.split("@")[-1] if "@" in settings.redis_url else settings.redis_url
+        redis_url_redacted = _redacted_redis_url()
         logger.warning(
             "Redis 패턴 캐시 삭제 실패 (DB-CACHE-001)",
             extra={
@@ -151,3 +160,51 @@ async def cache_delete_pattern(client: aioredis.Redis, pattern: str) -> int:
             },
         )
         return 0
+
+
+# ── 응답 캐싱 헬퍼 (엔드포인트 HIT/MISS 보일러플레이트 통합) ────────────────────
+
+T = TypeVar("T", bound=BaseModel)
+
+
+async def cached_or_compute(
+    client: aioredis.Redis,
+    cache_key: str,
+    model_cls: type[T],
+    compute: Callable[[], Awaitable[T]],
+    *,
+    ttl: int | None = None,
+) -> T:
+    """캐시 조회 → HIT 검증 → MISS 시 compute() 후 적재 (feature_spec_BE-REDIS_v2 §3.3).
+
+    HIT 값 Pydantic 검증 실패(PARSE-REDIS-001) 시 캐시 무효화 후 compute() 폴백.
+    """
+    cached = await cache_get(client, cache_key)
+    if cached is not None:
+        try:
+            result = model_cls.model_validate(cached)
+            logger.info(
+                "cache=hit",
+                extra={"error_code": "CACHE", "context": {"cache_key": cache_key}},
+            )
+            return result
+        except ValidationError as e:
+            logger.warning(
+                "Redis 캐시값 Pydantic 검증 실패 — 캐시 무효화 후 DB 재조회 (PARSE-REDIS-001)",
+                extra={
+                    "error_code": "PARSE-REDIS-001",
+                    "context": {"cache_key": cache_key, "error_msg": str(e)},
+                },
+            )
+            await cache_delete(client, cache_key)
+
+    logger.info(
+        "cache=miss",
+        extra={"error_code": "CACHE", "context": {"cache_key": cache_key}},
+    )
+    result = await compute()
+    await cache_set(
+        client, cache_key, result.model_dump(mode="json"),
+        ttl=ttl if ttl is not None else settings.redis_ttl,
+    )
+    return result
