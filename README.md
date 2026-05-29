@@ -9,7 +9,8 @@
 | 브랜치 | 설명 |
 |---|---|
 | `main` | 안정 브랜치 |
-| `backend/merge_all` | 백엔드 전체 기능 통합 브랜치 (현재 최신) |
+| `backend/refactoring` | 중복 로직 단일 출처 통합 리팩토링 (현재 작업 브랜치) |
+| `backend/merge_all` | 백엔드 전체 기능 통합 브랜치 |
 | `feat/be-*` | 기능별 개발 브랜치 (병합 완료) |
 
 ---
@@ -17,8 +18,9 @@
 ## 사전 준비
 
 - Python 3.11.9
-- PostgreSQL 16
-- Redis 7+
+- PostgreSQL 16 (로컬 또는 Docker)
+- Redis 7+ (로컬 또는 Docker)
+- Docker Desktop (아래 컨테이너 기동 방식 사용 시)
 
 ```bash
 # 1. 패키지 설치
@@ -29,11 +31,41 @@ cp .env.example .env
 # .env 에서 필수 항목 설정 (아래 변수 목록 참조)
 ```
 
+### PostgreSQL · Redis 기동 (Docker)
+
+이 레포에는 `docker-compose.yml`이 없으므로, `.env` 기본값에 맞춰 컨테이너를 직접 생성한다.
+
+```bash
+# 최초 1회 — 컨테이너 생성 (.env 의 DATABASE_URL / REDIS_URL 기본값과 일치)
+docker run -d --name pt_postgres \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_PASSWORD=password \
+  -e POSTGRES_DB=price_transmission \
+  -p 5432:5432 postgres:16
+
+docker run -d --name pt_redis -p 6379:6379 redis:7
+```
+
+> 위 설정은 `DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/price_transmission`,
+> `REDIS_URL=redis://localhost:6379/0` 과 일치한다. `.env` 를 바꾸면 컨테이너 옵션도 함께 맞춘다.
+
+```bash
+# 2회차부터 — 기존 컨테이너 재기동 (서버 켜기 전 항상 먼저 실행)
+docker start pt_postgres pt_redis
+
+# 상태 확인 (Postgres 가 'accepting connections' 이면 준비 완료)
+docker ps
+docker exec pt_postgres pg_isready -U postgres
+```
+
+> ⚠️ 컨테이너를 띄우지 않으면 `APP_ENV=development` 기본값 때문에 서버는 기동되지만
+> PostgreSQL `WinError 1225` · Redis 연결 거부 경고가 뜨고 **DB 조회 엔드포인트가 동작하지 않는다.**
+
 ### .env 전체 변수 목록
 
 ```dotenv
-# 필수
-DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/price_transmission
+# 필수 (아래 값은 "사전 준비"의 Docker 컨테이너 설정과 일치)
+DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/price_transmission
 REDIS_URL=redis://localhost:6379/0
 
 # 선택 (기본값 있음)
@@ -67,16 +99,24 @@ KAMIS_CERT_ID=
 
 ## 서버 실행
 
+기본 포트는 **8001** 고정이다.
+
 ```bash
-# DB 마이그레이션 먼저 적용
+# 1. DB/Redis 컨테이너 기동 (위 "사전 준비" 참조)
+docker start pt_postgres pt_redis
+
+# 2. DB 마이그레이션 적용 (스키마 최신화 — 최초 1회 또는 마이그레이션 추가 시)
 alembic upgrade head
 
-# 개발 서버 (hot-reload)
+# 3a. 개발 서버 (hot-reload)
 uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 
-# 프로덕션
+# 3b. 프로덕션
 uvicorn app.main:app --host 0.0.0.0 --port 8001 --workers 4
 ```
+
+기동 로그에 `PostgreSQL 연결 확인` 이 보이면 정상이다.
+(`PostgreSQL 연결 실패 … development 모드이므로 기동 계속` 이 뜨면 1번 컨테이너 기동을 확인한다.)
 
 서버 기동 후 확인:
 - Swagger UI: `http://localhost:8001/docs`
@@ -296,6 +336,7 @@ curl -X POST http://localhost:8001/api/v1/admin/batch/trigger
 
 | 목적 | 명령 |
 |---|---|
+| DB/Redis 컨테이너 기동 | `docker start pt_postgres pt_redis` |
 | 개발 서버 | `uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload` |
 | DB 마이그레이션 적용 | `alembic upgrade head` |
 | 마이그레이션 1단계 롤백 | `alembic downgrade -1` |
@@ -304,7 +345,7 @@ curl -X POST http://localhost:8001/api/v1/admin/batch/trigger
 | 린트 | `ruff check .` |
 | 포맷 | `ruff format .` |
 | 수동 배치 트리거 | `curl -X POST http://localhost:8001/api/v1/admin/batch/trigger` |
-| pipeline_runs 상태 확인 | `psql -c "SELECT * FROM pipeline_runs ORDER BY id DESC LIMIT 5;"` |
+| pipeline_runs 상태 확인 | `docker exec pt_postgres psql -U postgres -d price_transmission -c "SELECT * FROM pipeline_runs ORDER BY id DESC LIMIT 5;"` |
 
 ---
 
@@ -401,7 +442,7 @@ data/
 
 alembic/                     DB 마이그레이션 (7개 revision)
 tests/                       pytest 테스트 (DB·Redis 없이 실행 가능)
-docs/                        명세 문서 (버전 관리: docs_manifest.md)
+docs/                        명세 문서 (버전 관리: docs_manifest_v3.md)
 ```
 
 ---
@@ -427,12 +468,12 @@ Phase 2~7-ml 모두 계산 완료 직후 DB 적재가 이루어집니다.
 ### 배치 완료 확인
 
 ```bash
-# pipeline_runs 상태 확인
-psql -U user -d price_transmission -c \
+# pipeline_runs 상태 확인 (pt_postgres 컨테이너 내부 psql 실행)
+docker exec pt_postgres psql -U postgres -d price_transmission -c \
   "SELECT id, run_date, status, phases_run, finished_at FROM pipeline_runs ORDER BY id DESC LIMIT 5;"
 
 # data_freshness 갱신 확인
-psql -U user -d price_transmission -c \
+docker exec pt_postgres psql -U postgres -d price_transmission -c \
   "SELECT data_up_to, next_run_date, last_updated FROM data_freshness;"
 
 # Redis 캐시 무효화 후 응답 확인
@@ -474,13 +515,13 @@ ORIGIN  [DB-CONN-002] SQLAlchemy async pool 고갈 | context: {pool_size=10, act
 
 ## 참조 문서
 
-**버전 관리 단일 출처 (SoT)**: [`docs/docs_manifest.md`](docs/docs_manifest.md)
+**버전 관리 단일 출처 (SoT)**: [`docs/docs_manifest_v3.md`](docs/docs_manifest_v3.md)
 
 | 파일 | 설명 |
 |---|---|
-| `docs/api_spec_v5.md` | API 엔드포인트 명세 |
-| `docs/db_schema_v5.md` | DB 스키마 명세 |
+| `docs/api_spec_v6.md` | API 엔드포인트 명세 |
+| `docs/db_schema_v6.md` | DB 스키마 명세 |
 | `docs/exception_spec_v6.md` | 예외 코드 인덱스 (디버깅용) |
 | `docs/exception_design_v3.md` | 예외 체이닝 설계 (심층 분석용) |
-| `docs/pipeline_output_spec_v7.md` | 파이프라인 출력 명세 |
-| `docs/feature_dev_list_v4.md` | feat/* 브랜치 기능 목록 |
+| `docs/pipeline_output_spec_v9.md` | 파이프라인 출력 명세 |
+| `docs/feature_dev_list_v5.md` | feat/* 브랜치 기능 목록 |

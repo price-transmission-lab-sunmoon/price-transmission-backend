@@ -4,14 +4,14 @@ api_spec_vN §패널 엔드포인트, feature_spec_API-PANEL 기준.
 """
 from __future__ import annotations
 
-import re
-from collections import defaultdict
 from datetime import date
-from typing import Literal
 
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.coerce import parse_yyyymm
+from app.core.coerce import period_str as _period_str
+from app.core.coerce import to_float as _f
 from app.core.config import settings
 from app.core.exceptions import APIError
 from app.db.models.anomaly import (
@@ -43,44 +43,11 @@ from app.schemas.panel import (
 )
 from app.schemas.timeseries import StatSeriesPoint, StatSeriesResponse
 
-
 # ── 공통 헬퍼 ────────────────────────────────────────────────────────────────
 
-def _f(v) -> float | None:
-    if v is None:
-        return None
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return None
-
-
-def _period_str(d: date | None) -> str:
-    if d is None:
-        return ""
-    return d.strftime("%Y-%m")
-
-
 def _parse_yyyymm(value: str, field: str) -> date:
-    m = re.fullmatch(r"(\d{4})-(\d{2})", value)
-    if not m:
-        raise APIError(
-            "API-MET-001",
-            f"날짜 형식이 올바르지 않습니다: {value!r}",
-            context={"field": field, "value": value},
-            http_status=400,
-            public_code="INVALID_DATE_RANGE",
-        )
-    y, mo = int(m.group(1)), int(m.group(2))
-    if not (1 <= mo <= 12):
-        raise APIError(
-            "API-MET-001",
-            f"날짜 형식이 올바르지 않습니다: {value!r}",
-            context={"field": field, "value": value},
-            http_status=400,
-            public_code="INVALID_DATE_RANGE",
-        )
-    return date(y, mo, 1)
+    """YYYY-MM → date. 패널 도메인 코드(API-MET-001) 고정."""
+    return parse_yyyymm(value, field, code="API-MET-001")
 
 
 async def _get_anomaly_or_404(db: AsyncSession, anomaly_id: int) -> AnomalyResult:

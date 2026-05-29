@@ -33,6 +33,8 @@ from pathlib import Path
 import asyncpg
 import pandas as pd
 
+from app.core.config import settings
+
 PROJECT_ROOT = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_ROOT / "data" / "processed"
 PHASE2_DIR = DATA_DIR / "phase2"
@@ -44,7 +46,13 @@ PHASE7_DIR = DATA_DIR / "phase7"
 PHASE7_ML_DIR = DATA_DIR / "phase7_ml"
 MERGED_DIR = DATA_DIR / "merged"
 
-DB_URL = "postgresql://postgres:password@localhost:5432/price_transmission"
+# asyncpg는 SQLAlchemy 드라이버 접두사(+asyncpg)를 인식하지 못하므로 제거
+DB_URL = (
+    settings.database_url
+    .replace("+asyncpg", "")
+    .replace("+psycopg2", "")
+    .replace("+psycopg", "")
+)
 
 
 # ─── 공통 ─────────────────────────────────────────────────────────────────────

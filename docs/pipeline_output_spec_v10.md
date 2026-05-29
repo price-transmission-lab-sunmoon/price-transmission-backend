@@ -1,8 +1,8 @@
 # 계량경제학 파이프라인 출력 명세서
 
 **과제명**: 계량경제학 모형과 머신러닝 기반 소비자 물가 분석 및 이상 탐지를 위한 모델 개발
-**문서 유형**: 파이프라인 출력 명세서 (계량경제학 브랜치, v9)
-**작성일**: 2026-05-22
+**문서 유형**: 파이프라인 출력 명세서 (계량경제학 브랜치, v10)
+**작성일**: 2026-05-26
 **작성 기준** (최신 버전 자동 참조 — `abcd_vN.md` 규칙): `doc1_technical_pipeline_vN.md` / `doc2_pattern_definitions_vN.md` / `config/settings.py` / Phase 0~3 구현 코드 기준
 **변경 이력**:
 
@@ -37,6 +37,7 @@
   출력 디렉토리 패턴 ({YYYYMMDD*HHMM}\_IF, 대시보드* 등)
   SHAP CSV + summary + run_meta.json 명세
   run_meta.json 주요 필드 (status, skipped, background_data 등))
+- v9 → v10: Phase 8 출력물 추가
 
 ---
 
@@ -1279,3 +1280,378 @@ Phase 구현 시 `config/settings.py` 값을 우선 참조한다.
 ---
 
 _v7 — 당시 design_review v1 기반 갱신에서 출발, Phase 3·4·5·6 반영하여 갱신. Phase 3~7 출력 명세는 구현 착수 시 코드 기준으로 재갱신 필요. (v7에서 외부 참조 표기를 `abcd_vN.md` 규칙으로 전환, `docs/docs_manifest.md` 버전 해석기 연동)_
+
+## Phase 8 — 결과 종합 및 로버스트니스 체크
+
+**실행**: `python src/preprocessing/phase8/phase8_run.py`
+
+**입력**: Phase 7 산출물 전체, Phase 7-ML 산출물 전체, Phase 4 baseline, Phase 6 breakpoints, Phase 1 changes/dummy_changes, product_config.json
+
+**방법**: 집계·비교·대조 분석. 새 탐지 없음. R3(contamination 민감도)에서만 ML 3종 모델 재실행.
+
+### 출력 디렉토리
+
+```
+data/processed/phase8/
+├── summary/
+│   ├── confidence_summary.csv              ← S1: 신뢰도 등급 집계
+│   ├── agreement_analysis.csv              ← S2: 통계-ML 일치율
+│   ├── cross_commodity_comparison.csv      ← S3: 품목 간 횡단 비교
+│   ├── wholesale_comparison.csv            ← S4: 도매 그룹 비교
+│   ├── wholesale_downstream_analysis.csv   ← S4: 도매 하류 전달 분석
+│   ├── shock_correspondence.csv            ← S5: 외부 충격 요약
+│   └── shock_detail.csv                    ← S5: 외부 충격 상세
+├── robustness/
+│   ├── rolling_window_sensitivity.csv      ← R1: 롤링 윈도우 민감도
+│   ├── seasonal_method_comparison.csv      ← R2: 계절 조정 방식 비교
+│   ├── contamination_sensitivity.csv       ← R3: contamination 민감도
+│   └── robustness_summary.json             ← R1~R3 전체 요약
+├── synchrony/
+│   ├── heatmap_data.csv                    ← T1: 히트맵 데이터
+│   ├── monthly_co_detection.csv            ← T2: 월별 동시 탐지
+│   ├── case_A_ukraine.csv                  ← T3: 케이스 A
+│   ├── case_B_russia_drought.csv           ← T4: 케이스 B
+│   ├── case_C_feed_livestock.csv           ← T5: 케이스 C
+│   └── ml_reference_co_occurrence.csv      ← T6: ML reference 동시 발생
+└── phase8_meta.json                        ← 전체 실행 메타 정보
+```
+
+---
+
+### `summary/confidence_summary.csv`
+
+20개 유닛(A·B) + ALL 합계 행. 신뢰도 등급별 이상 이벤트 집계.
+
+| 컬럼              | 타입  | 설명                                         |
+| ----------------- | ----- | -------------------------------------------- |
+| `commodity_id`    | str   | 품목 식별자 (ALL = 전체 합계)                |
+| `segment`         | str   | 구간 (A / B / ALL)                           |
+| `total_anomalies` | int   | 이상 이벤트 총수 (high + medium + reference) |
+| `high`            | int   | 고신뢰: 통계 + ML 동시 탐지                  |
+| `medium`          | int   | 중신뢰: 통계만 탐지                          |
+| `reference`       | int   | 참고: ML만 탐지                              |
+| `high_pct`        | float | high / total_anomalies × 100                 |
+| `stat_only`       | int   | = medium                                     |
+| `ml_only`         | int   | = reference                                  |
+
+---
+
+### `summary/agreement_analysis.csv`
+
+20개 유닛. 통계-ML 4분류 교차 대조 및 Cohen's Kappa.
+
+| 컬럼             | 타입  | 설명                                               |
+| ---------------- | ----- | -------------------------------------------------- |
+| `commodity_id`   | str   | 품목 식별자                                        |
+| `segment`        | str   | 구간 (A / B)                                       |
+| `total_months`   | int   | 전체 관측 월 수 (결측 제거 후)                     |
+| `both_detected`  | int   | 통계 ✓ + ML ✓                                      |
+| `stat_only`      | int   | 통계 ✓ + ML ✗                                      |
+| `ml_only`        | int   | 통계 ✗ + ML ✓                                      |
+| `both_normal`    | int   | 통계 ✗ + ML ✗                                      |
+| `agreement_rate` | float | (both_detected + both_normal) / total_months × 100 |
+| `cohen_kappa`    | float | Cohen's Kappa 계수 (-1 ~ 1)                        |
+
+---
+
+### `summary/cross_commodity_comparison.csv`
+
+20개 유닛. 10개 품목 A·B 구간 패턴별 탐지 건수 및 탐지율.
+
+| 컬럼              | 타입  | 설명                          |
+| ----------------- | ----- | ----------------------------- |
+| `commodity_id`    | str   | 품목 식별자                   |
+| `segment`         | str   | 구간 (A / B)                  |
+| `total_obs`       | int   | 전체 관측 수                  |
+| `p1_count`        | int   | 패턴 1 탐지 건수              |
+| `p1_rate`         | float | 패턴 1 탐지율 (%)             |
+| `p2_count`        | int   | 패턴 2 탐지 건수              |
+| `p2_rate`         | float | 패턴 2 탐지율 (%)             |
+| `p3_count`        | int   | 패턴 3 탐지 건수 (B만, A는 0) |
+| `p3_rate`         | float | 패턴 3 탐지율 (%)             |
+| `total_stat`      | int   | 통계 탐지 총 건수             |
+| `total_stat_rate` | float | 통계 탐지율 (%)               |
+| `ml_detected`     | int   | ML 탐지 건수                  |
+| `high_count`      | int   | 고신뢰 건수                   |
+| `has_wholesale`   | bool  | 도매 단계 유무                |
+
+---
+
+### `summary/wholesale_comparison.csv`
+
+2행. 3구간(7종) vs 4구간(3종) 그룹 비교.
+
+| 컬럼              | 타입  | 설명                          |
+| ----------------- | ----- | ----------------------------- |
+| `group`           | str   | '3seg' / '4seg'               |
+| `n_commodities`   | int   | 품목 수                       |
+| `avg_p1_rate_A`   | float | 구간 A 평균 패턴 1 탐지율 (%) |
+| `avg_p1_rate_B`   | float | 구간 B 평균 패턴 1 탐지율 (%) |
+| `avg_p2_rate_A`   | float | 구간 A 평균 패턴 2 탐지율 (%) |
+| `avg_p2_rate_B`   | float | 구간 B 평균 패턴 2 탐지율 (%) |
+| `avg_stat_rate_A` | float | 구간 A 평균 전체 탐지율 (%)   |
+| `avg_stat_rate_B` | float | 구간 B 평균 전체 탐지율 (%)   |
+| `avg_high_pct`    | float | 평균 고신뢰 비율 (%)          |
+
+---
+
+### `summary/wholesale_downstream_analysis.csv`
+
+6행 (3품목 × 2쌍). 4구간 품목의 도매 하류(C·D) 전달 분석.
+
+| 컬럼                    | 타입  | 설명                                       |
+| ----------------------- | ----- | ------------------------------------------ |
+| `commodity_id`          | str   | 품목 식별자 (groundnuts / banana / orange) |
+| `seg_pair`              | str   | 구간 쌍 ('A→C' / 'B→D')                    |
+| `upstream_count`        | int   | 상류 구간 탐지 건수                        |
+| `downstream_count`      | int   | 하류 구간 탐지 건수                        |
+| `co_occurrence`         | int   | 동월 동시 탐지 건수                        |
+| `co_occurrence_rate`    | float | 동시 탐지율 (%)                            |
+| `downstream_follows_1m` | int   | 상류 탐지 후 1개월 내 하류 탐지 건수       |
+| `downstream_follows_3m` | int   | 상류 탐지 후 3개월 내 하류 탐지 건수       |
+
+---
+
+### `summary/shock_correspondence.csv`
+
+5행 (충격 5개). 외부 충격별 통계·ML 회수율 요약.
+
+| 컬럼                          | 타입  | 설명                                          |
+| ----------------------------- | ----- | --------------------------------------------- |
+| `shock_id`                    | str   | 충격 ID (E1 / E2 / E4 / E6 / E9)              |
+| `shock_name`                  | str   | 이벤트명                                      |
+| `shock_start`                 | str   | 윈도우 시작 (YYYY-MM-DD)                      |
+| `shock_end`                   | str   | 윈도우 종료 (YYYY-MM-DD)                      |
+| `n_applicable_segments`       | int   | 적용 가능 유닛 수                             |
+| `stat_hits`                   | int   | 통계 탐지가 윈도우 내 1건 이상 탐지한 유닛 수 |
+| `stat_recall`                 | float | stat_hits / n_applicable_segments             |
+| `ml_hits`                     | int   | ML 탐지가 윈도우 내 1건 이상 탐지한 유닛 수   |
+| `ml_recall`                   | float | ml_hits / n_applicable_segments               |
+| `high_hits`                   | int   | 고신뢰 탐지가 윈도우 내 존재하는 유닛 수      |
+| `total_stat_events_in_window` | int   | 윈도우 내 통계 탐지 이벤트 총 건수            |
+| `total_ml_events_in_window`   | int   | 윈도우 내 ML 탐지 이벤트 총 건수              |
+
+---
+
+### `summary/shock_detail.csv`
+
+74행 (충격 × 유닛). 외부 충격별 유닛 상세.
+
+| 컬럼                      | 타입 | 설명                              |
+| ------------------------- | ---- | --------------------------------- |
+| `shock_id`                | str  | 충격 ID                           |
+| `commodity_id`            | str  | 품목 식별자                       |
+| `segment`                 | str  | 구간 (A / B)                      |
+| `stat_detected_in_window` | bool | 통계 탐지 존재 여부               |
+| `ml_detected_in_window`   | bool | ML 탐지 존재 여부                 |
+| `high_in_window`          | bool | 고신뢰 탐지 존재 여부             |
+| `stat_event_count`        | int  | 통계 탐지 건수                    |
+| `ml_event_count`          | int  | ML 탐지 건수                      |
+| `pattern_types`           | str  | 탐지된 패턴 유형 목록 (쉼표 구분) |
+
+---
+
+### `robustness/rolling_window_sensitivity.csv`
+
+20개 유닛. 패턴 2의 W=36/48/60 탐지 비교.
+
+| 컬럼                | 타입  | 설명                                 |
+| ------------------- | ----- | ------------------------------------ |
+| `commodity_id`      | str   | 품목 식별자                          |
+| `segment`           | str   | 구간 (A / B)                         |
+| `w36_flags`         | int   | W=36 패턴 2 탐지 건수                |
+| `w48_flags`         | int   | W=48 패턴 2 탐지 건수 (기본값)       |
+| `w60_flags`         | int   | W=60 패턴 2 탐지 건수                |
+| `w36_w48_overlap`   | int   | W36과 W48 동시 탐지 건수             |
+| `w48_w60_overlap`   | int   | W48과 W60 동시 탐지 건수             |
+| `w36_w48_jaccard`   | float | Jaccard 유사도 (0~1)                 |
+| `w48_w60_jaccard`   | float | Jaccard 유사도 (0~1)                 |
+| `stability_verdict` | str   | 판정 (stable / moderate / sensitive) |
+
+**판정 기준**: Jaccard ≥ 0.7 → stable, 0.4~0.7 → moderate, < 0.4 → sensitive.
+
+---
+
+### `robustness/seasonal_method_comparison.csv`
+
+20개 유닛. STL vs 계절 더미 기반 패턴 2 탐지 비교.
+
+| 컬럼                | 타입  | 설명                                 |
+| ------------------- | ----- | ------------------------------------ |
+| `commodity_id`      | str   | 품목 식별자                          |
+| `segment`           | str   | 구간 (A / B)                         |
+| `stl_flags`         | int   | STL 기반 패턴 2 탐지 건수            |
+| `dummy_flags`       | int   | 계절 더미 기반 패턴 2 탐지 건수      |
+| `overlap`           | int   | 동시 탐지 건수                       |
+| `jaccard`           | float | Jaccard 유사도 (0~1)                 |
+| `stl_only`          | int   | STL에서만 탐지된 건수                |
+| `dummy_only`        | int   | 더미에서만 탐지된 건수               |
+| `stability_verdict` | str   | 판정 (stable / moderate / sensitive) |
+
+**비고**: Phase 2~6은 재실행하지 않음. ECT·IRF·구조 변화는 STL 기반 결과를 공유.
+
+---
+
+### `robustness/contamination_sensitivity.csv`
+
+20개 유닛. contamination 0.05/0.08/0.10/0.12/0.15 ML 재실행 결과.
+
+| 컬럼                | 타입  | 설명                                  |
+| ------------------- | ----- | ------------------------------------- |
+| `commodity_id`      | str   | 품목 식별자                           |
+| `segment`           | str   | 구간 (A / B)                          |
+| `c005_detected`     | int   | contamination=0.05 탐지 건수          |
+| `c008_detected`     | int   | contamination=0.08 탐지 건수 (기본값) |
+| `c010_detected`     | int   | contamination=0.10 탐지 건수          |
+| `c012_detected`     | int   | contamination=0.12 탐지 건수          |
+| `c015_detected`     | int   | contamination=0.15 탐지 건수          |
+| `c005_c008_jaccard` | float | 0.05 vs 0.08 Jaccard                  |
+| `c010_c008_jaccard` | float | 0.10 vs 0.08 Jaccard                  |
+| `c012_c008_jaccard` | float | 0.12 vs 0.08 Jaccard                  |
+| `c015_c008_jaccard` | float | 0.15 vs 0.08 Jaccard                  |
+| `stability_verdict` | str   | 판정 (stable / moderate / sensitive)  |
+
+**비고**: stat_timeseries에서 6종 피처를 추출, 동일 StandardScaler + IF/LOF/SVM 재실행. 앙상블 기준 ≥ 2/3.
+
+---
+
+### `robustness/robustness_summary.json`
+
+R1~R3 전체 요약.
+
+```json
+{
+  "rolling_window": {
+    "avg_jaccard_w36_w48": float,
+    "avg_jaccard_w48_w60": float,
+    "verdict": "stable | moderate | sensitive",
+    "n_stable": int,
+    "n_moderate": int,
+    "n_sensitive": int
+  },
+  "seasonal_method": { ... },
+  "contamination": {
+    "per_pair_avg_jaccard": { "c005_c008_jaccard": float, ... },
+    "overall_avg_jaccard": float,
+    "verdict": "stable | moderate | sensitive",
+    ...
+  }
+}
+```
+
+---
+
+### `synchrony/heatmap_data.csv`
+
+5,372행 (월 × 품목 × 구간). 시각화용 히트맵 원시 데이터.
+
+| 컬럼               | 타입 | 설명                                  |
+| ------------------ | ---- | ------------------------------------- |
+| `date`             | date | 월 (YYYY-MM-01)                       |
+| `commodity_id`     | str  | 품목 식별자                           |
+| `segment`          | str  | 구간 (A / B)                          |
+| `pattern_type`     | str  | pattern1 / pattern2 / pattern3 / none |
+| `confidence_grade` | str  | high / medium / reference / none      |
+| `stat_detected`    | bool | 통계 탐지 여부                        |
+| `ml_detected`      | bool | ML 탐지 여부                          |
+
+---
+
+### `synchrony/monthly_co_detection.csv`
+
+구간별 월 단위 동시 탐지 집계.
+
+| 컬럼                  | 타입 | 설명                          |
+| --------------------- | ---- | ----------------------------- |
+| `date`                | date | 월 (YYYY-MM-01)               |
+| `segment`             | str  | 구간 (A / B)                  |
+| `n_commodities_stat`  | int  | 통계 탐지 품목 수 (0~10)      |
+| `n_commodities_ml`    | int  | ML 탐지 품목 수 (0~10)        |
+| `n_commodities_high`  | int  | 고신뢰 탐지 품목 수 (0~10)    |
+| `commodity_list_stat` | str  | 탐지 품목 ID 목록 (쉼표 구분) |
+| `in_shock_window`     | bool | 외부 충격 윈도우 내 여부      |
+| `shock_id`            | str  | 해당 충격 ID (없으면 빈 값)   |
+
+---
+
+### `synchrony/case_A_ukraine.csv`
+
+9행 (2022-02 ~ 2022-10). 케이스 A: wheat, maize, soybean 구간 A.
+
+| 컬럼               | 타입 | 설명                                           |
+| ------------------ | ---- | ---------------------------------------------- |
+| `date`             | date | 월                                             |
+| `{cid}_A_detected` | bool | 해당 품목 구간 A 탐지 여부                     |
+| `{cid}_A_pattern`  | str  | 패턴 유형 (pattern1 / pattern2 / none)         |
+| `{cid}_A_grade`    | str  | 신뢰도 등급 (high / medium / reference / none) |
+| `n_simultaneous`   | int  | 동시 탐지 품목 수 (0~3)                        |
+
+`{cid}`: wheat, maize, soybean
+
+---
+
+### `synchrony/case_B_russia_drought.csv`
+
+11행 (2010-08 ~ 2011-06). 케이스 B: 7품목 구간 A.
+
+case_A_ukraine.csv와 동일 구조. `{cid}`: wheat, maize, soybean, palmoil, sugar, coffee, beef. `n_simultaneous` 범위 0~7.
+
+---
+
+### `synchrony/case_C_feed_livestock.csv`
+
+191행. 케이스 C: maize/soybean A 탐지 → beef A 시차 반응.
+
+| 컬럼                        | 타입  | 설명                                         |
+| --------------------------- | ----- | -------------------------------------------- |
+| `trigger_date`              | date  | 트리거 날짜 (maize/soybean A 탐지 월)        |
+| `trigger_commodity`         | str   | maize / soybean                              |
+| `beef_A_response_1m`        | bool  | 1개월 내 소고기 A 탐지 여부                  |
+| `beef_A_response_3m`        | bool  | 3개월 내 소고기 A 탐지 여부                  |
+| `beef_A_response_6m`        | bool  | 6개월 내 소고기 A 탐지 여부                  |
+| `beef_A_first_response_lag` | float | 최초 반응 시차 (개월, NaN = 6개월 내 미반응) |
+
+**비고**: 반응은 누적. 1m 반응 시 3m·6m도 True. 탐색적 분석으로 인과관계를 의미하지 않음.
+
+---
+
+### `synchrony/ml_reference_co_occurrence.csv`
+
+k ≥ 3인 월만 기록. ML 단독 탐지(reference)가 3개 이상 품목에서 동시 발생한 월.
+
+| 컬럼              | 타입 | 설명                          |
+| ----------------- | ---- | ----------------------------- |
+| `date`            | date | 월 (YYYY-MM-01)               |
+| `segment`         | str  | 구간 (A / B)                  |
+| `n_reference`     | int  | reference 등급 품목 수 (≥ 3)  |
+| `commodity_list`  | str  | 해당 품목 ID 목록 (쉼표 구분) |
+| `in_shock_window` | bool | 외부 충격 윈도우 내 여부      |
+| `shock_id`        | str  | 해당 충격 ID (없으면 빈 값)   |
+
+---
+
+### `phase8_meta.json`
+
+전체 실행 메타 정보.
+
+```json
+{
+  "run_timestamp": "YYYY-MM-DD HH:MM:SS",
+  "elapsed_seconds": float,
+  "modules": {
+    "summary": { "outputs": ["confidence_summary.csv", ...] },
+    "robustness": { "outputs": ["rolling_window_sensitivity.csv", ...] },
+    "synchrony": { "outputs": ["heatmap_data.csv", ...] }
+  },
+  "key_findings": {
+    "confidence": { "total_anomalies": int, "high": int, ... },
+    "agreement": { "avg_agreement_rate": float, "avg_cohen_kappa": float },
+    "shock_recall": { "E1": { "stat_recall": float, "ml_recall": float }, ... },
+    "robustness": { "rolling_window": { "verdict": str }, ... },
+    "feed_livestock_lag": { "n_triggers": int, "response_3m_pct": float, ... },
+    "ml_reference_co_occurrence": { "k3_plus_months": int, "in_shock_window": int }
+  }
+}
+```
+
+---

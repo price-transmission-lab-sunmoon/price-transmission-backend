@@ -23,8 +23,6 @@ class Settings(BaseSettings):
     contamination: float = 0.10
     contamination_range: list[float] = [0.05, 0.10, 0.15]
     random_state: int = 42
-    zscore_warning: float = 2.0
-    zscore_alert: float = 2.5
 
     # 이상 탐지 임계값 (feature_spec_API-PANEL §4 — 하드코딩 금지)
     zscore_warning: float = 2.0   # Z-score 주의 임계값

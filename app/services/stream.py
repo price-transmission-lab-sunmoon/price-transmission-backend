@@ -5,84 +5,32 @@
 """
 from __future__ import annotations
 
-import re
 from collections import defaultdict
 from datetime import date
-from typing import Literal
 
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.coerce import parse_yyyymm
+from app.core.coerce import safe_float as _safe_float
+from app.core.coerce import safe_period as _safe_period
 from app.core.exceptions import APIError, ParseError
 from app.db.models.anomaly import AnomalyResult
 from app.db.models.timeseries import MvAnomalyDensityYearly, StatTimeseries
 from app.schemas.timeseries import (
-    AnomalyDensityPoint,
     AnomalyNode,
     StreamDataPoint,
     StreamMinimapResponse,
     StreamResponse,
     StreamSeries,
 )
+from app.services.aggregation import aggregate_by_granularity, build_anomaly_density
 
 # ── 공용 파싱·변환 헬퍼 ────────────────────────────────────────────────────────
 
 def _parse_yyyymm(value: str, field: str) -> date:
-    """YYYY-MM → date(y, m, 1). 형식 오류 → 400 INVALID_DATE_RANGE."""
-    m = re.fullmatch(r"(\d{4})-(\d{2})", value)
-    if not m:
-        raise APIError(
-            "API-STR-002",
-            f"날짜 형식이 올바르지 않습니다: {value!r}",
-            context={"field": field, "value": value},
-            http_status=400,
-            public_code="INVALID_DATE_RANGE",
-        )
-    y, mo = int(m.group(1)), int(m.group(2))
-    if mo < 1 or mo > 12:
-        raise APIError(
-            "API-STR-002",
-            f"날짜 형식이 올바르지 않습니다: {value!r}",
-            context={"field": field, "value": value},
-            http_status=400,
-            public_code="INVALID_DATE_RANGE",
-        )
-    return date(y, mo, 1)
-
-
-def _safe_float(value: object, table: str, column: str) -> float | None:
-    """Decimal/None → float. 오버플로우 시 PARSE-NUM-001."""
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (OverflowError, ValueError) as e:
-        raise ParseError(
-            "PARSE-NUM-001",
-            "NUMERIC→float 오버플로우",
-            context={"table": table, "column": column, "value": str(value)},
-            boundary="DB→API",
-        ) from e
-
-
-def _safe_period(value: date | None, table: str, column: str) -> str:
-    """date → YYYY-MM. None 또는 변환 실패 시 PARSE-DATE-001."""
-    if value is None:
-        raise ParseError(
-            "PARSE-DATE-001",
-            "DATE→YYYY-MM 변환 실패: NULL",
-            context={"table": table, "column": column, "raw_value": None},
-            boundary="DB→API",
-        )
-    try:
-        return value.strftime("%Y-%m")
-    except Exception as e:
-        raise ParseError(
-            "PARSE-DATE-001",
-            "DATE→YYYY-MM 변환 실패",
-            context={"table": table, "column": column, "raw_value": str(value)},
-            boundary="DB→API",
-        ) from e
+    """YYYY-MM → date. 스트림 도메인 코드(API-STR-002) 고정."""
+    return parse_yyyymm(value, field, code="API-STR-002")
 
 
 def _clamp_range(
@@ -125,59 +73,7 @@ def _clamp_range(
 
 # ── granularity 집계 헬퍼 ─────────────────────────────────────────────────────
 
-def _quarter_key(d: date) -> tuple[int, int]:
-    """(year, 0-indexed quarter) — 분기 마지막 월 기준 (api_spec_vN §granularity 동작 규칙)."""
-    return (d.year, (d.month - 1) // 3)
-
-
-def _quarter_last_month(year: int, q0: int) -> date:
-    """분기 마지막 월 1일 반환 (3·6·9·12월)."""
-    return date(year, (q0 + 1) * 3, 1)
-
-
-def _aggregate_monthly_points(
-    monthly: list[dict],
-    granularity: Literal["monthly", "quarterly", "yearly"],
-) -> list[dict]:
-    """월 단위 포인트 리스트를 granularity에 따라 집계.
-
-    각 dict: {period: date, transmission_rate, upstream_pct, downstream_pct,
-              in_warmup_period: bool, anomaly_ids: list[int]}
-    집계 대표 기간: 분기 마지막 월 / 연도 12월 (api_spec_vN §granularity 동작 규칙).
-    이상 노드는 별도 반환하므로 anomaly_ids 는 집계 포인트에 유지.
-    """
-    if granularity == "monthly":
-        return monthly
-
-    if granularity == "quarterly":
-        key_fn = _quarter_key
-        period_fn = lambda k: _quarter_last_month(k[0], k[1])
-    else:  # yearly
-        key_fn = lambda p: p["period"].year
-        period_fn = lambda k: date(k, 12, 1)
-
-    groups: dict = defaultdict(list)
-    for p in monthly:
-        groups[key_fn(p)].append(p)
-
-    result: list[dict] = []
-    for k in sorted(groups):
-        grp = groups[k]
-
-        def avg(field: str) -> float | None:
-            vals = [p[field] for p in grp if p[field] is not None]
-            return sum(vals) / len(vals) if vals else None
-
-        all_ids: list[int] = [aid for p in grp for aid in p["anomaly_ids"]]
-        result.append({
-            "period": period_fn(k),
-            "transmission_rate": avg("transmission_rate"),
-            "upstream_pct": avg("upstream_pct"),
-            "downstream_pct": avg("downstream_pct"),
-            "in_warmup_period": any(p["in_warmup_period"] for p in grp),
-            "anomaly_ids": all_ids,
-        })
-    return result
+# 집계 로직은 app.services.aggregation.aggregate_by_granularity 로 이전
 
 
 # ── /stream ───────────────────────────────────────────────────────────────────
@@ -306,7 +202,6 @@ async def get_stream(
     # 9. 구간별 월 단위 포인트 조립
     seg_monthly: dict[str, list[dict]] = defaultdict(list)
     for row in ts_rows:
-        period = _safe_period(row.period, "stat_timeseries", "period")
         ids = anomaly_index.get((row.segment_id, row.period), [])
         seg_monthly[row.segment_id].append({
             "period": row.period,
@@ -322,7 +217,12 @@ async def get_stream(
     total_points = 0
     for seg_id in segments_filter:
         monthly = seg_monthly.get(seg_id, [])
-        aggregated = _aggregate_monthly_points(monthly, granularity)
+        aggregated = aggregate_by_granularity(
+            monthly, granularity,
+            avg_fields=("transmission_rate", "upstream_pct", "downstream_pct"),
+            any_fields=("in_warmup_period",),
+            concat_fields=("anomaly_ids",),
+        )
         points = [
             StreamDataPoint(
                 period=_safe_period(p["period"], "stat_timeseries", "period"),
@@ -358,7 +258,7 @@ async def get_stream(
                 )
             )
         except (ParseError, Exception) as e:
-            if isinstance(e, (ParseError, APIError)):
+            if isinstance(e, ParseError | APIError):
                 raise
             raise APIError(
                 "API-INT-001",
@@ -476,7 +376,12 @@ async def get_stream_minimap(
     total_points = 0
     for seg_id in segments_filter:
         monthly = seg_monthly.get(seg_id, [])
-        aggregated = _aggregate_monthly_points(monthly, "yearly")
+        aggregated = aggregate_by_granularity(
+            monthly, "yearly",
+            avg_fields=("transmission_rate", "upstream_pct", "downstream_pct"),
+            any_fields=("in_warmup_period",),
+            concat_fields=("anomaly_ids",),
+        )
         points = [
             StreamDataPoint(
                 period=_safe_period(p["period"], "stat_timeseries", "period"),
@@ -496,24 +401,7 @@ async def get_stream_minimap(
         total_points = max(len(s.data) for s in series) if series else 0
 
     # 연도별 밀도 집계 (구간 합산)
-    year_density: dict[int, dict] = {}
-    for dr in density_rows:
-        y = int(dr.year)
-        if y not in year_density:
-            year_density[y] = {"high_count": 0, "medium_count": 0, "reference_count": 0}
-        year_density[y]["high_count"] += int(dr.high_count or 0)
-        year_density[y]["medium_count"] += int(dr.medium_count or 0)
-        year_density[y]["reference_count"] += int(dr.reference_count or 0)
-
-    anomaly_density = [
-        AnomalyDensityPoint(
-            period=str(y),
-            high_count=v["high_count"],
-            medium_count=v["medium_count"],
-            reference_count=v["reference_count"],
-        )
-        for y, v in sorted(year_density.items())
-    ]
+    anomaly_density = build_anomaly_density(density_rows)
 
     return StreamMinimapResponse(
         commodity_id=commodity_id,
