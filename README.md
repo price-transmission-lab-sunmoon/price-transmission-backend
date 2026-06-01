@@ -4,6 +4,69 @@
 
 ---
 
+## 빠른 시작 — 새 컴퓨터에서 실행 (Docker)
+
+**Docker Desktop만 설치**되어 있으면 아래 순서로 app·PostgreSQL·Redis가 함께 뜨고,
+적재 완료된 DB 스냅샷(`db/snapshot.sql.gz`)이 **최초 기동 시 자동 복원**된다.
+Python 설치·`pip install`·`alembic`·데이터 적재 모두 **불필요**하다.
+
+### 전체 순서
+
+```bash
+# 1. clone
+git clone <repo-url>
+cd price-transmission-backend
+
+# 2. env 설정
+cp .env.docker.example .env        # Windows PowerShell: copy .env.docker.example .env
+
+# 3. 실행  ← 이 한 줄
+docker compose up --build          # 포그라운드(로그 보임). 백그라운드면 끝에 -d
+```
+
+### 확인
+
+```bash
+curl http://localhost:8001/api/v1/meta/config      # → db_status:"ok", redis_status:"ok"
+curl http://localhost:8001/api/v1/commodities       # → 품목 10개 (데이터 복원 확인)
+```
+
+또는 브라우저에서 Swagger UI: `http://localhost:8001/docs`
+
+### 주의
+
+- **`.env`는 그대로 사용** — `.env.docker.example`의 호스트는 이미 compose 서비스명(`db`/`redis`)이다. `localhost`로 바꾸지 말 것.
+- **첫 실행만 `--build`** 필요(이미지 빌드 ~1분). 2회차부터는 `docker compose up -d`.
+- 중지: `docker compose down`(데이터 유지) · `docker compose down -v`(DB 볼륨까지 삭제 → 다음 `up`에서 스냅샷 재복원).
+
+### 구성
+
+| 파일 | 역할 |
+|---|---|
+| `Dockerfile` | 서빙 전용 app 이미지 (python:3.11.9-slim, `app/`+`alembic/`만 — `data/`·`pipeline/` 미포함) |
+| `docker-compose.yml` | `db`(postgres:16) + `redis`(redis:7) + `app`. healthcheck로 기동 순서 보장 |
+| `db/snapshot.sql.gz` | 적재 완료 DB 전체 덤프(스키마+데이터+alembic_version). postgres `initdb`가 자동 복원 |
+| `.env.docker.example` | compose용 `.env` 템플릿 (호스트 = `db`/`redis`) |
+| `scripts/make-snapshot.ps1` / `.sh` | 현재 `pt_postgres`에서 스냅샷 재생성 |
+
+### 데이터 갱신 흐름
+
+컨테이너 이미지에는 `pipeline/`·`data/`가 없으므로 **컨테이너 내 배치 트리거(`/admin/batch/trigger`)·파이프라인 재계산은 동작하지 않는다.**
+데이터를 갱신하려면 (1) 아래 "사전 준비(네이티브 개발)" 환경에서 파이프라인 실행 + DB 적재 → (2) 스냅샷 재생성:
+
+```bash
+# pt_postgres 기동 상태에서
+powershell -ExecutionPolicy Bypass -File scripts\make-snapshot.ps1   # Windows
+sh scripts/make-snapshot.sh                                          # Mac/Linux
+# → db/snapshot.sql.gz 갱신. 새 PC에서 docker compose down -v 후 up --build 시 새 스냅샷 복원
+```
+
+> 스냅샷이 50MB를 넘으면 git 직접 커밋 대신 git-lfs 또는 S3 다운로드로 전환 권장. (현재 ~1MB)
+
+AWS 배포 검토는 [`docs/DEPLOY_AWS.md`](docs/DEPLOY_AWS.md) 참조.
+
+---
+
 ## 브랜치 구조
 
 | 브랜치 | 설명 |
@@ -15,7 +78,9 @@
 
 ---
 
-## 사전 준비
+## 사전 준비 (네이티브 개발)
+
+> 아래는 코드를 직접 고치며 개발할 때의 절차다. 단순 실행만 필요하면 위 "Docker로 즉시 실행"을 쓴다.
 
 - Python 3.11.9
 - PostgreSQL 16 (로컬 또는 Docker)

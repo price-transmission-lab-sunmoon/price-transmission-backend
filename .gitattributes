@@ -1,0 +1,6 @@
+# 컨테이너에서 실행되는 셸 스크립트는 항상 LF (CRLF면 컨테이너에서 깨짐)
+*.sh text eol=lf
+docker/entrypoint.sh text eol=lf
+
+# DB 스냅샷은 바이너리 — diff/eol 변환 금지
+*.sql.gz binary
