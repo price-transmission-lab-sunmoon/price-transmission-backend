@@ -1,0 +1,35 @@
+# 빌드 컨텍스트 최소화 — 서빙 이미지에 불필요한 것 제외
+.git/
+.gitignore
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.claude/
+
+# 서빙 런타임에 불필요 (DB에서만 읽음)
+data/
+pipeline/
+notebooks/
+tests/
+docs/
+output/
+processed/
+raw/
+
+# DB 스냅샷은 compose 바인드 마운트로 주입 (이미지에 굽지 않음)
+db/
+
+# 시크릿·로그
+.env
+.env.*
+*.log
+.DS_Store
+
+# Docker 자체
+Dockerfile
+docker-compose.yml
+README.md
