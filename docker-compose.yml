@@ -36,7 +36,8 @@ services:
         condition: service_healthy
     env_file: .env
     ports:
-      - "8001:8001"
+      # 발표 시연용 고유 호스트 포트(난수 선점, 타 팀 충돌 회피). 컨테이너 내부는 8001 유지.
+      - "39745:8001"
     restart: unless-stopped
 
 volumes:
