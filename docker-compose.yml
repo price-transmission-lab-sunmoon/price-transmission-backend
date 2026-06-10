@@ -1,0 +1,44 @@
+# 새 PC: Docker Desktop + .env 준비 후 `docker compose up --build` 한 줄로 기동.
+# db는 최초 기동 시 db/snapshot.sql.gz를 자동 복원(initdb).
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: price_transmission
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # 데이터 볼륨이 비어 있는 '최초 기동'에만 실행됨 (스키마+데이터+alembic_version 복원)
+      - ./db/snapshot.sql.gz:/docker-entrypoint-initdb.d/01-snapshot.sql.gz:ro
+    healthcheck:
+      # -h localhost(TCP) 강제 → initdb/복원 완료 후 실제 서버가 5432를 열 때만 통과
+      test: ["CMD-SHELL", "pg_isready -h localhost -U postgres -d price_transmission"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  redis:
+    image: redis:7
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file: .env
+    ports:
+      # 발표 시연용 고유 호스트 포트(난수 선점, 타 팀 충돌 회피). 컨테이너 내부는 8001 유지.
+      - "39745:8001"
+    restart: unless-stopped
+
+volumes:
+  pgdata:

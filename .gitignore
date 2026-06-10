@@ -1,0 +1,58 @@
+# 환경 변수 (시크릿 포함)
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+*.so
+.venv/
+venv/
+env/
+
+# 테스트 캐시
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Claude Code (로컬 worktree — 커밋 대상 아님)
+.claude/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Ruff
+.ruff_cache/
+
+# Alembic 자동 생성 방지 (Frame 단계: autogenerate 금지)
+# alembic/versions/ 폴더 내 파일은 수동 작성만 허용
+
+# macOS
+.DS_Store
+
+# 파이프라인 생성 데이터 (배치 실행 산출물 — 커밋 불필요)
+data/processed/**/*.csv
+data/processed/**/*.json
+data/processed/**/*.parquet
+data/raw/**/*
+!data/processed/**/.gitkeep
+!data/raw/**/.gitkeep
+
+# 사용자 추가 데이터/산출물 폴더 (루트 직속, 백업/원본 사본)
+/output/
+/processed/
+/raw/
+
+# 런타임 로그
+*.log

@@ -1,0 +1,347 @@
+{
+  "_note": "참조 엔드포인트 더미 응답 픽스처 — feature_spec_API-REF_v4 §1.3. 테스트 품목: wheat(3seg), banana(4seg).",
+
+  "GET /api/v1/commodities": {
+    "commodities": [
+      {
+        "commodity_id": "wheat",
+        "name_kr": "밀",
+        "name_en": "Wheat",
+        "cluster": "grain",
+        "has_wholesale": false,
+        "route_type": "3seg",
+        "segments": ["A", "B", "D_prime"],
+        "analysis_start": "2000-01",
+        "analysis_end": "2026-03",
+        "has_anomaly_this_month": false,
+        "latest_anomaly_grade": null
+      },
+      {
+        "commodity_id": "maize",
+        "name_kr": "옥수수",
+        "name_en": "Maize",
+        "cluster": "grain",
+        "has_wholesale": false,
+        "route_type": "3seg",
+        "segments": ["A", "B", "D_prime"],
+        "analysis_start": "2000-01",
+        "analysis_end": "2026-03",
+        "has_anomaly_this_month": false,
+        "latest_anomaly_grade": null
+      },
+      {
+        "commodity_id": "soybean",
+        "name_kr": "대두",
+        "name_en": "Soybean",
+        "cluster": "grain",
+        "has_wholesale": false,
+        "route_type": "3seg",
+        "segments": ["A", "B", "D_prime"],
+        "analysis_start": "2000-01",
+        "analysis_end": "2026-03",
+        "has_anomaly_this_month": false,
+        "latest_anomaly_grade": null
+      },
+      {
+        "commodity_id": "palm_oil",
+        "name_kr": "팜유",
+        "name_en": "Palm Oil",
+        "cluster": "oil_sugar",
+        "has_wholesale": false,
+        "route_type": "3seg",
+        "segments": ["A", "B", "D_prime"],
+        "analysis_start": "2000-01",
+        "analysis_end": "2026-03",
+        "has_anomaly_this_month": false,
+        "latest_anomaly_grade": null
+      },
+      {
+        "commodity_id": "sugar",
+        "name_kr": "설탕",
+        "name_en": "Sugar",
+        "cluster": "oil_sugar",
+        "has_wholesale": false,
+        "route_type": "3seg",
+        "segments": ["A", "B", "D_prime"],
+        "analysis_start": "2000-01",
+        "analysis_end": "2026-03",
+        "has_anomaly_this_month": false,
+        "latest_anomaly_grade": null
+      },
+      {
+        "commodity_id": "coffee",
+        "name_kr": "커피",
+        "name_en": "Coffee",
+        "cluster": "tropical",
+        "has_wholesale": false,
+        "route_type": "3seg",
+        "segments": ["A", "B", "D_prime"],
+        "analysis_start": "2000-01",
+        "analysis_end": "2026-03",
+        "has_anomaly_this_month": false,
+        "latest_anomaly_grade": null
+      },
+      {
+        "commodity_id": "beef",
+        "name_kr": "소고기",
+        "name_en": "Beef",
+        "cluster": "livestock",
+        "has_wholesale": false,
+        "route_type": "3seg",
+        "segments": ["A", "B", "D_prime"],
+        "analysis_start": "2000-01",
+        "analysis_end": "2026-03",
+        "has_anomaly_this_month": false,
+        "latest_anomaly_grade": null
+      },
+      {
+        "commodity_id": "groundnuts",
+        "name_kr": "땅콩",
+        "name_en": "Groundnuts",
+        "cluster": "independent",
+        "has_wholesale": true,
+        "route_type": "4seg",
+        "segments": ["A", "B", "C", "D"],
+        "analysis_start": "2000-01",
+        "analysis_end": "2026-03",
+        "has_anomaly_this_month": false,
+        "latest_anomaly_grade": null
+      },
+      {
+        "commodity_id": "banana",
+        "name_kr": "바나나",
+        "name_en": "Banana",
+        "cluster": "tropical",
+        "has_wholesale": true,
+        "route_type": "4seg",
+        "segments": ["A", "B", "C", "D"],
+        "analysis_start": "2000-01",
+        "analysis_end": "2026-03",
+        "has_anomaly_this_month": false,
+        "latest_anomaly_grade": null
+      },
+      {
+        "commodity_id": "orange",
+        "name_kr": "오렌지",
+        "name_en": "Orange",
+        "cluster": "independent",
+        "has_wholesale": true,
+        "route_type": "4seg",
+        "segments": ["A", "B", "C", "D"],
+        "analysis_start": "2000-01",
+        "analysis_end": "2026-03",
+        "has_anomaly_this_month": false,
+        "latest_anomaly_grade": null
+      }
+    ]
+  },
+
+  "GET /api/v1/commodities/wheat": {
+    "commodity_id": "wheat",
+    "name_kr": "밀",
+    "name_en": "Wheat",
+    "cluster": "grain",
+    "has_wholesale": false,
+    "route_type": "3seg",
+    "segments": ["A", "B", "D_prime"],
+    "analysis_start": "2000-01",
+    "analysis_end": "2026-03",
+    "has_anomaly_this_month": false,
+    "latest_anomaly_grade": null,
+    "segment_meta": {
+      "A": {
+        "model_type": "VECM",
+        "cointegrated": true,
+        "normal_transmission_lag": 2,
+        "transmission_elasticity": 0.72,
+        "upstream_label": "국제가 (원화 환산)",
+        "downstream_label": "수입단가",
+        "warmup_end": "2003-12"
+      },
+      "B": {
+        "model_type": "VAR",
+        "cointegrated": false,
+        "normal_transmission_lag": 1,
+        "transmission_elasticity": 0.58,
+        "upstream_label": "수입단가",
+        "downstream_label": "PPI",
+        "warmup_end": "2003-12"
+      },
+      "D_prime": {
+        "model_type": "VAR",
+        "cointegrated": false,
+        "normal_transmission_lag": 2,
+        "transmission_elasticity": 0.45,
+        "upstream_label": "PPI",
+        "downstream_label": "CPI",
+        "warmup_end": "2003-12"
+      }
+    }
+  },
+
+  "GET /api/v1/commodities/banana": {
+    "commodity_id": "banana",
+    "name_kr": "바나나",
+    "name_en": "Banana",
+    "cluster": "tropical",
+    "has_wholesale": true,
+    "route_type": "4seg",
+    "segments": ["A", "B", "C", "D"],
+    "analysis_start": "2000-01",
+    "analysis_end": "2026-03",
+    "has_anomaly_this_month": false,
+    "latest_anomaly_grade": null,
+    "segment_meta": {
+      "A": {
+        "model_type": "VECM",
+        "cointegrated": true,
+        "normal_transmission_lag": 2,
+        "transmission_elasticity": 0.68,
+        "upstream_label": "국제가 (원화 환산)",
+        "downstream_label": "수입단가",
+        "warmup_end": "2003-12"
+      },
+      "B": {
+        "model_type": "VAR",
+        "cointegrated": false,
+        "normal_transmission_lag": 1,
+        "transmission_elasticity": 0.52,
+        "upstream_label": "수입단가",
+        "downstream_label": "PPI",
+        "warmup_end": "2003-12"
+      },
+      "C": {
+        "model_type": "VAR",
+        "cointegrated": false,
+        "normal_transmission_lag": 2,
+        "transmission_elasticity": 0.61,
+        "upstream_label": "PPI",
+        "downstream_label": "도매가",
+        "warmup_end": "2003-12"
+      },
+      "D": {
+        "model_type": "VECM",
+        "cointegrated": true,
+        "normal_transmission_lag": 3,
+        "transmission_elasticity": 0.44,
+        "upstream_label": "도매가",
+        "downstream_label": "CPI",
+        "warmup_end": "2003-12"
+      }
+    }
+  },
+
+  "GET /api/v1/commodities/nonexistent": {
+    "error": {
+      "code": "COMMODITY_NOT_FOUND",
+      "message": "요청한 품목을 찾을 수 없습니다.",
+      "context": {"commodity_id": "nonexistent"}
+    }
+  },
+
+  "GET /api/v1/segments": {
+    "segments": [
+      {
+        "segment_id": "A",
+        "label_kr": "구간 A (국제가→수입단가)",
+        "upstream_label": "국제가 (원화 환산)",
+        "downstream_label": "수입단가",
+        "applies_to": "all",
+        "pattern1": true,
+        "pattern2": true,
+        "pattern3": false,
+        "ml_applied": true
+      },
+      {
+        "segment_id": "B",
+        "label_kr": "구간 B (수입단가→PPI)",
+        "upstream_label": "수입단가",
+        "downstream_label": "PPI",
+        "applies_to": "all",
+        "pattern1": true,
+        "pattern2": true,
+        "pattern3": true,
+        "ml_applied": true
+      },
+      {
+        "segment_id": "C",
+        "label_kr": "구간 C (PPI→도매가)",
+        "upstream_label": "PPI",
+        "downstream_label": "도매가",
+        "applies_to": "4seg",
+        "pattern1": true,
+        "pattern2": false,
+        "pattern3": false,
+        "ml_applied": false
+      },
+      {
+        "segment_id": "D",
+        "label_kr": "구간 D (도매가→CPI)",
+        "upstream_label": "도매가",
+        "downstream_label": "CPI",
+        "applies_to": "4seg",
+        "pattern1": true,
+        "pattern2": false,
+        "pattern3": false,
+        "ml_applied": false
+      },
+      {
+        "segment_id": "D_prime",
+        "label_kr": "구간 D′ (PPI→CPI)",
+        "upstream_label": "PPI",
+        "downstream_label": "CPI",
+        "applies_to": "3seg",
+        "pattern1": true,
+        "pattern2": false,
+        "pattern3": false,
+        "ml_applied": false
+      }
+    ]
+  },
+
+  "GET /api/v1/events": {
+    "events": [
+      {
+        "event_key": "financial_crisis_2008",
+        "label_kr": "2008 금융위기",
+        "start_date": "2008-07",
+        "end_date": "2009-03",
+        "color_hex": "#F97316"
+      },
+      {
+        "event_key": "covid19_2020",
+        "label_kr": "2020 코로나19",
+        "start_date": "2020-02",
+        "end_date": "2021-06",
+        "color_hex": "#22C55E"
+      },
+      {
+        "event_key": "brazil_frost_2021",
+        "label_kr": "2021~22 브라질 서리",
+        "start_date": "2021-07",
+        "end_date": "2022-03",
+        "color_hex": "#38BDF8"
+      },
+      {
+        "event_key": "ukraine_2022",
+        "label_kr": "2022 우크라이나 사태",
+        "start_date": "2022-02",
+        "end_date": "2022-10",
+        "color_hex": "#EF4444"
+      },
+      {
+        "event_key": "indonesia_palmoil_2022",
+        "label_kr": "2022 인도네시아 팜유 수출 규제",
+        "start_date": "2022-04",
+        "end_date": "2022-05",
+        "color_hex": "#FB923C"
+      }
+    ]
+  },
+
+  "GET /api/v1/freshness": {
+    "data_up_to": "2026-03",
+    "next_run_date": "2026-04-15",
+    "last_updated": "2026-04-01T03:00:00Z"
+  }
+}

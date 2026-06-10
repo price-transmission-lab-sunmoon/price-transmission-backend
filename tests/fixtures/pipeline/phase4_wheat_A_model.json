@@ -1,0 +1,18 @@
+{
+  "commodity_id": "wheat",
+  "segment": "A",
+  "upstream_col": "intl_price_krw",
+  "downstream_col": "import_price_usd",
+  "lag_selection_criterion": "AIC",
+  "model_type": "VECM",
+  "lag_selected": 3,
+  "n_obs": 300,
+  "estimation_period_start": "2000-01",
+  "estimation_period_end": "2024-12",
+  "cointegrated": true,
+  "det_order": 0,
+  "coint_rank": 1,
+  "log_likelihood": -1234.5678,
+  "alpha": [[-0.014], [0.000083]],
+  "beta": [[1.0], [-1359.84]]
+}

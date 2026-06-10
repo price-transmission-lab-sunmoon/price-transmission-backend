@@ -1,0 +1,11 @@
+{
+  "commodity_id": "wheat",
+  "segment": "A",
+  "normal_transmission_lag": 18,
+  "transmission_elasticity": 0.000891,
+  "warmup_end": "2004-01",
+  "model_type": "VECM",
+  "estimation_period_start": "2000-01",
+  "estimation_period_end": "2024-12",
+  "n_obs": 300
+}
