@@ -116,8 +116,6 @@ class AsymmetryResult(Base):
     )
 
 
-# ── Phase 6 테이블 (feat/be-api-panel에서 ORM 추가) ───────────────────────────
-
 class Subperiod(Base):
     """db_schema_vN §subperiods — Phase 6 하위 기간 분할."""
     __tablename__ = "subperiods"
@@ -167,8 +165,6 @@ class Breakpoint(Base):
         UniqueConstraint("commodity_id", "segment_id", name="uq_breakpoints"),
     )
 
-
-# ── Phase 4 테이블 (feat/be-api-panel에서 ORM 추가) ───────────────────────────
 
 class Baseline(Base):
     """db_schema_vN §baselines — Phase 4 기준선 파라미터.
@@ -227,8 +223,6 @@ class IRFData(Base):
     )
 
 
-# ── Phase 2~3 테이블 (최소 참조용, feat/be-db-pipeline에서 migration 작성) ────
-
 class CointegrationResult(Base):
     """db_schema_vN §cointegration_results — Phase 3 Johansen 공적분 검정 결과.
 
@@ -267,8 +261,6 @@ class CointegrationResult(Base):
         UniqueConstraint("commodity_id", "segment_id", name="uq_cointegration_results"),
     )
 
-
-# ── Phase 7-ML 테이블 (feat/be-api-panel에서 ORM 추가) ────────────────────────
 
 class MLScore(Base):
     """db_schema_vN §ml_scores — Phase 7-ML 모델별 이상 점수.

@@ -37,18 +37,14 @@ import numpy as np
 from statsmodels.tsa.vector_ar.vecm import coint_johansen
 from statsmodels.tsa.api import VAR
 
-# ──────────────────────────────────────────────
 # 경로 설정
-# ──────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SA_DIR = os.path.join(BASE_DIR, "data", "processed", "phase1", "seasonal_adjusted")
 CONFIG_PATH = os.path.join(BASE_DIR, "data", "processed", "product_config.json")
 ORDERS_PATH = os.path.join(BASE_DIR, "data", "processed", "phase2", "integration_orders.json")
 PHASE3_DIR = os.path.join(BASE_DIR, "data", "processed", "phase3")
 
-# ──────────────────────────────────────────────
 # 검정 파라미터
-# ──────────────────────────────────────────────
 MAX_LAG = 4              # VAR 시차 탐색 범위 상한
 DET_ORDER = 0            # 0 = 상수항 포함, 추세 미포함
 SIGNIFICANCE_LEVEL = 0.05
@@ -162,9 +158,7 @@ def check_integration_compatibility(orders: dict, commodity_id: str,
         }
 
 
-# ──────────────────────────────────────────────
 # 통합 실행
-# ──────────────────────────────────────────────
 def run_phase3(sa_dir: str = SA_DIR,
                config_path: str = CONFIG_PATH,
                orders_path: str = ORDERS_PATH,
@@ -263,7 +257,6 @@ def run_phase3(sa_dir: str = SA_DIR,
                   f"Trace={johansen['trace_stat_r0']} vs {johansen['trace_crit_r0']} | "
                   f"lag={johansen_lag}{flag_str}")
 
-    # ── 결과 저장 ──
     results_df = pd.DataFrame(all_results)
     results_path = os.path.join(output_dir, "cointegration_results.csv")
     results_df.to_csv(results_path, index=False, encoding="utf-8-sig")
@@ -272,7 +265,6 @@ def run_phase3(sa_dir: str = SA_DIR,
     with open(selection_path, "w", encoding="utf-8") as f:
         json.dump(model_selection, f, indent=2, ensure_ascii=False)
 
-    # ── 요약 출력 ──
     print(f"\n{'=' * 60}")
     print("Phase 3 완료!")
     print(f"  검정 결과:     {results_path}")
@@ -311,9 +303,7 @@ def run_phase3(sa_dir: str = SA_DIR,
     return results_df, model_selection
 
 
-# ──────────────────────────────────────────────
 # 엔트리포인트
-# ──────────────────────────────────────────────
 if __name__ == "__main__":
     warnings.filterwarnings("ignore", category=FutureWarning)
     warnings.filterwarnings("ignore", category=UserWarning)

@@ -45,8 +45,6 @@ def _analysis_dates(commodity: CommodityDetail, commodity_id: str) -> tuple[date
     return date(y1, m1, 1), date(y2, m2, 1)
 
 
-# ── 참조 엔드포인트 ────────────────────────────────────────────────────────────
-
 @router.get("/commodities", response_model=CommodityListResponse)
 async def list_commodities(
     db: AsyncSession = Depends(get_db),
@@ -63,8 +61,6 @@ async def get_commodity(
     """단일 품목 상세 + segment_meta — baselines/cointegration_results 실 DB 조회."""
     return await ref_svc.get_commodity_detail(db, commodity_id)
 
-
-# ── 시각화 엔드포인트 ─────────────────────────────────────────────────────────
 
 @router.get("/commodities/{commodity_id}/stream", response_model=StreamResponse)
 async def get_stream(

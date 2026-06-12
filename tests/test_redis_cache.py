@@ -25,7 +25,6 @@ from app.cache.redis import (
     cached_or_compute,
 )
 
-# ── 헬퍼: 가짜 Redis 클라이언트 ───────────────────────────────────────────────
 
 def _make_redis(get_return=None, raise_on_get=False, raise_on_set=False):
     """AsyncMock 기반 Redis 클라이언트 스텁 생성."""
@@ -39,8 +38,6 @@ def _make_redis(get_return=None, raise_on_get=False, raise_on_set=False):
     client.delete.return_value = 1
     return client
 
-
-# ── cache_get 테스트 ──────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_cache_get_miss_returns_none():
@@ -80,8 +77,6 @@ async def test_cache_get_invalid_json_deletes_key_and_returns_none(caplog):
     client.delete.assert_called_once_with("test:broken_key")
 
 
-# ── cache_set 테스트 ──────────────────────────────────────────────────────────
-
 @pytest.mark.asyncio
 async def test_cache_set_stores_json():
     """dict를 JSON 직렬화하여 지정 TTL로 저장한다."""
@@ -105,8 +100,6 @@ async def test_cache_set_connection_error_logs_warn(caplog):
         await cache_set(client, "test:key", {"x": 1}, ttl=3600)
     assert "DB-CACHE-001" in caplog.text
 
-
-# ── cache_delete_pattern 테스트 ───────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_cache_delete_pattern_removes_matching_keys():
@@ -158,8 +151,6 @@ async def test_cache_delete_pattern_no_matching_keys():
     client.delete.assert_not_called()
 
 
-# ── 통합 흐름 테스트 ─────────────────────────────────────────────────────────
-
 @pytest.mark.asyncio
 async def test_hit_miss_flow():
     """MISS 후 set, 다시 HIT 흐름을 순서대로 검증한다."""
@@ -190,8 +181,6 @@ async def test_hit_miss_flow():
     assert result == payload
 
 
-# ── PARSE-REDIS-001 시나리오 ─────────────────────────────────────────────────
-
 @pytest.mark.asyncio
 async def test_parse_redis_001_scenario():
     """캐시에 올바른 JSON이지만 스키마 불일치인 경우 PARSE-REDIS-001 처리를 검증한다.
@@ -217,8 +206,6 @@ async def test_parse_redis_001_scenario():
         StreamResponse.model_validate(stale_payload)
 
 
-# ── invalidate_cache 테스트 ───────────────────────────────────────────────────
-
 @pytest.mark.asyncio
 async def test_invalidate_cache_deletes_all_three_patterns():
     """invalidate_cache 호출 시 stream/raw-prices/stat-series 세 패턴이 삭제된다."""
@@ -240,8 +227,6 @@ async def test_invalidate_cache_deletes_all_three_patterns():
     assert f"{prefix}:stat-series:*" in deleted_patterns
     assert len(deleted_patterns) == 3
 
-
-# ── cached_or_compute 테스트 (엔드포인트 HIT/MISS 헬퍼) ───────────────────────
 
 class _Toy(BaseModel):
     x: int

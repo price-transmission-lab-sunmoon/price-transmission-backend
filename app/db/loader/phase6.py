@@ -102,7 +102,6 @@ async def load_phase6(
             f2020, p2020, s2020 = _chow(chow_pts, "2020-01")
             f2022, p2022, s2022 = _chow(chow_pts, "2022-01")
 
-            # ── breakpoints UPSERT ─────────────────────────────────────────────
             await session.execute(
                 text("""
                     INSERT INTO breakpoints (
@@ -143,7 +142,6 @@ async def load_phase6(
             )
             bp_count += 1
 
-            # ── subperiods UPSERT ──────────────────────────────────────────────
             for sp in data.get("subperiods", []):
                 period_start = normalize_yyyymm_to_date(str(sp["start"]))
                 period_end = normalize_yyyymm_to_date(str(sp["end"]))

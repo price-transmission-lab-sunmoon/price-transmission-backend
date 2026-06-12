@@ -70,8 +70,6 @@ class EventListResponse(BaseModel):
     events: list[EventItem]
 
 
-# ── /meta/pipeline, /meta/analysis-params (정적 응답) ─────────────────────────
-
 class PipelineNode(BaseModel):
     id: str
     label: str

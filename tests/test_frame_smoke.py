@@ -30,8 +30,6 @@ async def _override_get_db():
     yield AsyncMock()
 
 
-# ── Test 1: 앱 기동 + /meta/config 응답 ──────────────────────────────────────
-
 @pytest.mark.asyncio
 async def test_app_startup():
     """/meta/config 200 OK + 필수 키 4종 확인 (frame_spec §7.4 #1)."""
@@ -42,8 +40,6 @@ async def test_app_startup():
     for key in ("app_env", "db_status", "redis_status", "frame_version"):
         assert key in body, f"응답에 '{key}' 키 없음: {body}"
 
-
-# ── Test 2: /commodities 더미 10개 검증 ──────────────────────────────────────
 
 ALLOWED_CLUSTERS = {"grain", "oil_sugar", "tropical", "livestock", "independent"}
 ALLOWED_ROUTE_TYPES = {"3seg", "4seg"}
@@ -91,8 +87,6 @@ async def test_commodities_dummy():
         assert c["route_type"] in ALLOWED_ROUTE_TYPES, f"허용되지 않은 route_type: {c['route_type']}"
         assert isinstance(c["segments"], list), "segments가 배열이 아님"
 
-
-# ── Test 3: period 형식 검증 (YYYY-MM validator) ──────────────────────────────
 
 @pytest.mark.asyncio
 async def test_period_validator():

@@ -28,8 +28,6 @@ from app.db.loader.base import _v, normalize_yyyymm_to_date, validate_period_day
 _FIXTURE_DIR = Path(__file__).parent / "fixtures" / "pipeline"
 
 
-# ── _v() 헬퍼 ─────────────────────────────────────────────────────────────────
-
 def test_v_none():
     assert _v(None) is None
 
@@ -51,8 +49,6 @@ def test_v_zero():
     assert _v(0) == 0
 
 
-# ── normalize_yyyymm_to_date ──────────────────────────────────────────────────
-
 def test_normalize_yyyymm_ok():
     d = normalize_yyyymm_to_date("2022-03")
     assert d == date(2022, 3, 1)
@@ -70,8 +66,6 @@ def test_normalize_yyyymm_bad_format():
     assert exc_info.value.code == "DB-TYPE-001"
 
 
-# ── validate_period_day (D-11) ────────────────────────────────────────────────
-
 def test_validate_period_day_ok():
     validate_period_day(date(2022, 3, 1), "test_table")  # 예외 없음
 
@@ -81,8 +75,6 @@ def test_validate_period_day_fail():
         validate_period_day(date(2022, 3, 15), "test_table")
     assert exc_info.value.code == "DB-TYPE-001"
 
-
-# ── Phase 2 — load_stationarity_results ──────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_phase2_loads_csv(tmp_path):
@@ -143,8 +135,6 @@ async def test_phase2_rollback_on_db_error(tmp_path):
     session.rollback.assert_awaited()
 
 
-# ── Phase 6 — bp_dates 파싱 (DB-ARR-002 WARN) ────────────────────────────────
-
 def test_phase6_bp_dates_parse_ok():
     from app.db.loader.phase6 import _parse_bp_dates
     result = _parse_bp_dates(["2013-05", "2020-11"], "wheat", "D_prime")
@@ -164,8 +154,6 @@ def test_phase6_bp_dates_empty():
     assert result == []
 
 
-# ── DB-TYPE-001: period.day != 1 주입 ────────────────────────────────────────
-
 def test_period_day_not_1_is_fatal():
     """period.day != 1 주입 시 DB-TYPE-001 FATAL (§7 완료 기준)."""
     with pytest.raises(DBError) as exc_info:
@@ -173,8 +161,6 @@ def test_period_day_not_1_is_fatal():
     assert exc_info.value.code == "DB-TYPE-001"
     assert "월초" in exc_info.value.message
 
-
-# ── runner.py — Phase 실패 시 status='failed' ──────────────────────────────
 
 @pytest.mark.asyncio
 async def test_runner_marks_failed_on_phase2_error():

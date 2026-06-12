@@ -43,7 +43,6 @@ from app.schemas.panel import (
 )
 from app.schemas.timeseries import StatSeriesPoint, StatSeriesResponse
 
-# ── 공통 헬퍼 ────────────────────────────────────────────────────────────────
 
 def _parse_yyyymm(value: str, field: str) -> date:
     """YYYY-MM → date. 패널 도메인 코드(API-MET-001) 고정."""
@@ -91,8 +90,6 @@ async def _get_stat_at(
         ))
     )).scalar_one_or_none()
 
-
-# ── /detail ──────────────────────────────────────────────────────────────────
 
 async def get_detail(anomaly_id: int, db: AsyncSession) -> AnomalyDetailResponse:
     """이상 항목 상세 — anomaly_results + 관련 테이블 통합."""
@@ -236,8 +233,6 @@ def _build_judgment_path(ar: AnomalyResult, sm: StatMetrics) -> list[JudgmentSte
     return steps
 
 
-# ── /stat-series ─────────────────────────────────────────────────────────────
-
 _METRIC_TO_COLS = {
     "transmission_rate": ["transmission_rate", "rolling_mean", "q1", "q3"],
     "zscore": ["zscore"],
@@ -364,8 +359,6 @@ async def get_stat_series(
     )
 
 
-# ── /stat-snapshot ───────────────────────────────────────────────────────────
-
 async def get_stat_snapshot_iqr(
     anomaly_id: int, db: AsyncSession
 ) -> StatSnapshotIQRResponse:
@@ -438,8 +431,6 @@ async def get_stat_snapshot_asymmetry(
         asymmetry_significant=(bool(asym.asymmetry_significant) if asym else None),
     )
 
-
-# ── /irf ─────────────────────────────────────────────────────────────────────
 
 async def get_irf(
     anomaly_id: int, include_subperiods: bool, db: AsyncSession
@@ -538,8 +529,6 @@ async def get_irf(
         irfs=curves,
     )
 
-
-# ── /ml-map ──────────────────────────────────────────────────────────────────
 
 _MODEL_MAP = {
     "isolation_forest": "isolation_forest",

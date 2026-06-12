@@ -25,9 +25,7 @@ import numpy as np
 import pandas as pd
 from statsmodels.tsa.stattools import grangercausalitytests
 
-# ──────────────────────────────────────────────
 # 설정
-# ──────────────────────────────────────────────
 SIGNIFICANCE_LEVEL = 0.05
 SEGMENT = "C"
 
@@ -48,9 +46,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# ──────────────────────────────────────────────
 # 예외 클래스 (exception_spec_v1.md 기반)
-# ──────────────────────────────────────────────
 class PipelineError(Exception):
     """PL-* 에러 기반 클래스"""
     def __init__(self, code: str, message: str, context: dict):
@@ -60,9 +56,7 @@ class PipelineError(Exception):
         super().__init__(f"[{code}] {message} | {context}")
 
 
-# ──────────────────────────────────────────────
 # 핵심 함수
-# ──────────────────────────────────────────────
 def load_configs(product_config_path: Path, model_routing_path: Path):
     """product_config.json과 model_routing.json 로드"""
     with open(product_config_path, "r", encoding="utf-8") as f:
@@ -223,9 +217,7 @@ def build_granger_direction(
     return result
 
 
-# ──────────────────────────────────────────────
 # 메인 파이프라인
-# ──────────────────────────────────────────────
 def run_phase5(
     product_config_path: Path = PRODUCT_CONFIG_PATH,
     model_routing_path: Path = MODEL_ROUTING_PATH,
@@ -368,8 +360,6 @@ def run_phase5(
     return results_df, granger_direction
 
 
-# ──────────────────────────────────────────────
 # 실행
-# ──────────────────────────────────────────────
 if __name__ == "__main__":
     run_phase5()

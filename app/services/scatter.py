@@ -21,7 +21,6 @@ from app.schemas.timeseries import (
 )
 from app.services.stream import _clamp_range, _parse_yyyymm, _safe_float, _safe_period
 
-# ── /scatter ──────────────────────────────────────────────────────────────────
 
 async def get_scatter(
     db: AsyncSession,

@@ -26,8 +26,6 @@ from app.schemas.timeseries import (
 from app.services.aggregation import aggregate_by_granularity, build_anomaly_density
 from app.services.stream import _clamp_range, _parse_yyyymm, _safe_float, _safe_period
 
-# ── 소스 메타데이터 ─────────────────────────────────────────────────────────────
-
 # DB 컬럼명 → (label_kr, color_hint, index_column)
 _SOURCE_META: dict[str, tuple[str, str, str]] = {
     "intl_price_krw":  ("국제가 (원화 환산)",        "purple", "intl_price_krw_idx"),
@@ -134,8 +132,6 @@ def _build_transmission_overlay(
         overlay.append(TransmissionOverlaySeries(segment_id=seg_id, data=points))
     return overlay
 
-
-# ── /raw-prices ────────────────────────────────────────────────────────────────
 
 async def get_raw_prices(
     db: AsyncSession,
@@ -352,8 +348,6 @@ async def get_raw_prices(
         anomaly_nodes=anomaly_nodes,
     )
 
-
-# ── /raw-prices/minimap ───────────────────────────────────────────────────────
 
 async def get_raw_prices_minimap(
     db: AsyncSession,

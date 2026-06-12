@@ -23,7 +23,6 @@ depends_on: str | None = None
 
 
 def upgrade() -> None:
-    # ── ml_scores ─────────────────────────────────────────────────────────────
     op.create_table(
         "ml_scores",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
@@ -61,7 +60,6 @@ def upgrade() -> None:
         ["commodity_id", "segment_id", sa.text("period DESC")],
     )
 
-    # ── ml_projections ────────────────────────────────────────────────────────
     op.create_table(
         "ml_projections",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),

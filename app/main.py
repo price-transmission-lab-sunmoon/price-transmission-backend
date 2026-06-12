@@ -40,7 +40,6 @@ async def lifespan(app: FastAPI):
     logger = logging.getLogger("app")
     logger.info("서버 시작", extra={"error_code": "BOOT", "context": {"app_env": settings.app_env}})
 
-    # ── DB ping ───────────────────────────────────────────────────────────────
     import sqlalchemy
 
     from app.db.session import engine
@@ -66,7 +65,6 @@ async def lifespan(app: FastAPI):
                 {"error": str(e)},
             ) from e
 
-    # ── Redis ping ────────────────────────────────────────────────────────────
     redis_ok = await ping_redis()
     if not redis_ok and settings.app_env != "development":
         logger.critical(
@@ -75,7 +73,6 @@ async def lifespan(app: FastAPI):
         )
         raise ConfigError("CFG-CORE-001", "Redis 연결 실패")
 
-    # ── APScheduler 시작 (feat/be-batch) ──────────────────────────────────────
     from app.services.batch import init_scheduler
 
     _scheduler = init_scheduler()
@@ -87,11 +84,9 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # ── APScheduler 종료 ──────────────────────────────────────────────────────
     _scheduler.shutdown(wait=False)
     logger.info("APScheduler 종료", extra={"error_code": "BOOT", "context": {}})
 
-    # ── 종료 ──────────────────────────────────────────────────────────────────
     await close_redis()
     await engine.dispose()
     logger.info("서버 종료", extra={"error_code": "BOOT", "context": {}})

@@ -26,8 +26,6 @@ from app.db.loader.phase7_ml import (
 )
 
 
-# ── _force_bool ───────────────────────────────────────────────────────────────
-
 def test_force_bool_true():
     assert _force_bool(True) is True
 
@@ -56,8 +54,6 @@ def test_force_bool_falsy():
     assert _force_bool("") is False
 
 
-# ── _F (numeric overflow guard) ────────────────────────────────────────────────
-
 def test_F_normal():
     assert _F(0.42) == 0.42
 
@@ -80,8 +76,6 @@ def test_F_percentile_limit():
     assert _F(99.5, limit=100.0) == 99.5
     assert _F(150.0, limit=100.0) is None
 
-
-# ── _compute_percentiles — 핵심 (회신 v2 §1.3) ────────────────────────────────
 
 def _sample_predictions() -> pd.DataFrame:
     """3개 segment 동일, 5건 관측치."""
@@ -191,8 +185,6 @@ def test_compute_percentiles_missing_score_column():
     # lof, svm은 정상 산출
     assert out.loc[0, "lof_percentile"] == pytest.approx(100.0)
 
-
-# ── _compute_pca_projections — 회신 v2 §2.2 ───────────────────────────────────
 
 def _sample_features(n: int = 10) -> pd.DataFrame:
     """6 피처 sample. PCA 산출 가능한 최소 분포."""

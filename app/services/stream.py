@@ -26,7 +26,6 @@ from app.schemas.timeseries import (
 )
 from app.services.aggregation import aggregate_by_granularity, build_anomaly_density
 
-# ── 공용 파싱·변환 헬퍼 ────────────────────────────────────────────────────────
 
 def _parse_yyyymm(value: str, field: str) -> date:
     """YYYY-MM → date. 스트림 도메인 코드(API-STR-002) 고정."""
@@ -71,12 +70,8 @@ def _clamp_range(
     return max(from_, analysis_start), min(to_, analysis_end)
 
 
-# ── granularity 집계 헬퍼 ─────────────────────────────────────────────────────
-
 # 집계 로직은 app.services.aggregation.aggregate_by_granularity 로 이전
 
-
-# ── /stream ───────────────────────────────────────────────────────────────────
 
 async def get_stream(
     db: AsyncSession,
@@ -280,8 +275,6 @@ async def get_stream(
         anomaly_nodes=anomaly_nodes,
     )
 
-
-# ── /stream/minimap ────────────────────────────────────────────────────────────
 
 async def get_stream_minimap(
     db: AsyncSession,

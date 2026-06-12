@@ -26,7 +26,6 @@ depends_on: str | None = None
 
 
 def upgrade() -> None:
-    # ── breakpoints ───────────────────────────────────────────────────────────
     # db_schema_v5 §breakpoints 기준
     # UNIQUE (commodity_id, segment_id)
     op.create_table(
@@ -64,7 +63,6 @@ def upgrade() -> None:
         sa.UniqueConstraint("commodity_id", "segment_id", name="uq_breakpoints_commodity_segment"),
     )
 
-    # ── subperiods ────────────────────────────────────────────────────────────
     # db_schema_v5 §subperiods 기준
     # UNIQUE (commodity_id, segment_id, subperiod_index)
     op.create_table(

@@ -54,7 +54,6 @@ def _redacted_redis_url() -> str:
     return url.split("@")[-1] if "@" in url else url
 
 
-# ── 캐시 헬퍼 함수 ────────────────────────────────────────────────────────────
 # feature_spec_BE-REDIS_v2 §1.2 데이터 흐름 / §5 예외처리 대응
 
 
@@ -161,8 +160,6 @@ async def cache_delete_pattern(client: aioredis.Redis, pattern: str) -> int:
         )
         return 0
 
-
-# ── 응답 캐싱 헬퍼 (엔드포인트 HIT/MISS 보일러플레이트 통합) ────────────────────
 
 T = TypeVar("T", bound=BaseModel)
 

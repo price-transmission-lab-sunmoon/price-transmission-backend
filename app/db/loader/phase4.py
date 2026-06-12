@@ -37,8 +37,6 @@ logger = logging.getLogger(__name__)
 _PHASE4_ROOT = Path(settings.pipeline_data_root) / "phase4"
 
 
-# ── model_params ─────────────────────────────────────────────────────────────
-
 async def _upsert_model_params(
     session: AsyncSession,
     run_id: int,
@@ -114,8 +112,6 @@ async def _upsert_model_params(
     return count
 
 
-# ── irf_data ─────────────────────────────────────────────────────────────────
-
 async def _upsert_irf_data(
     session: AsyncSession,
     run_id: int,
@@ -181,8 +177,6 @@ async def _upsert_irf_data(
 
     return count
 
-
-# ── baselines ─────────────────────────────────────────────────────────────────
 
 async def _upsert_baselines(
     session: AsyncSession,
@@ -254,8 +248,6 @@ async def _upsert_baselines(
 
     return count
 
-
-# ── Phase 4 진입점 ────────────────────────────────────────────────────────────
 
 async def load_phase4(
     session: AsyncSession,

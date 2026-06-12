@@ -55,8 +55,6 @@ DB_URL = (
 )
 
 
-# ─── 공통 ─────────────────────────────────────────────────────────────────────
-
 def F(val):
     """float NaN/Inf → None"""
     if val is None:
@@ -131,8 +129,6 @@ async def latest_pipeline_run_id(conn: asyncpg.Connection) -> int | None:
     )
 
 
-# ─── stationarity_results ────────────────────────────────────────────────────
-
 async def load_stationarity(conn, run_id):
     csv_path = PHASE2_DIR / "stationarity_results.csv"
     if not csv_path.exists():
@@ -177,8 +173,6 @@ async def load_stationarity(conn, run_id):
     print(f"  stationarity_results: {len(rows)}행")
     return len(rows)
 
-
-# ─── cointegration_results ───────────────────────────────────────────────────
 
 async def load_cointegration(conn, run_id):
     csv_path = PHASE3_DIR / "cointegration_results.csv"
@@ -226,8 +220,6 @@ async def load_cointegration(conn, run_id):
     print(f"  cointegration_results: {len(rows)}행")
     return len(rows)
 
-
-# ─── baselines + model_params + irf_data (전체 기간) ──────────────────────────
 
 async def load_baselines(conn, run_id):
     baseline_dir = PHASE4_DIR / "baseline"
@@ -353,8 +345,6 @@ async def load_irf_data(conn, run_id):
     return len(rows)
 
 
-# ─── granger_results ─────────────────────────────────────────────────────────
-
 async def load_granger(conn, run_id):
     csv_path = PHASE5_DIR / "granger_results.csv"
     if not csv_path.exists():
@@ -390,8 +380,6 @@ async def load_granger(conn, run_id):
     print(f"  granger_results: {len(rows)}행")
     return len(rows)
 
-
-# ─── subperiods + breakpoints ────────────────────────────────────────────────
 
 async def load_subperiods_and_breakpoints(conn, run_id):
     bp_dir = PHASE6_DIR / "breakpoints"
@@ -468,8 +456,6 @@ async def load_subperiods_and_breakpoints(conn, run_id):
     return len(bp_rows), len(sp_rows)
 
 
-# ─── asymmetry_results ────────────────────────────────────────────────────────
-
 async def load_asymmetry(conn, run_id):
     asym_dir = PHASE7_DIR / "pattern2"
     files = sorted(asym_dir.glob("*_pattern2_asymmetry.csv"))
@@ -510,8 +496,6 @@ async def load_asymmetry(conn, run_id):
     print(f"  asymmetry_results: {len(rows)}행 ({len(files)}개 파일)")
     return len(rows)
 
-
-# ─── ml_scores ────────────────────────────────────────────────────────────────
 
 async def load_ml_scores(conn, run_id):
     """predictions CSV → ml_scores + percentile 산출.
@@ -578,8 +562,6 @@ async def load_ml_scores(conn, run_id):
     print(f"  ml_scores: {len(rows)}행 ({len(files)}개 파일) + percentile 산출")
     return len(rows)
 
-
-# ─── raw_prices ──────────────────────────────────────────────────────────────
 
 _RAW_VALUE_COLS = [
     "intl_price_usd", "intl_price_krw", "import_price_usd",
@@ -661,8 +643,6 @@ async def load_raw_prices(conn, run_id):
     return total
 
 
-# ─── data_freshness ──────────────────────────────────────────────────────────
-
 async def refresh_data_freshness(conn, run_id):
     """baseline.json의 estimation_period_end 중 최대값을 data_freshness.data_up_to로 갱신."""
     max_end = None
@@ -688,8 +668,6 @@ async def refresh_data_freshness(conn, run_id):
     print(f"  data_freshness 갱신: data_up_to={max_end}, next_run_date={next_month}")
     return max_end
 
-
-# ─── ml_projections (PCA) ────────────────────────────────────────────────────
 
 _PCA_FEATURE_COLS = [
     "transmission_rate", "upstream_pct", "downstream_pct",
@@ -834,8 +812,6 @@ async def load_ml_projections(conn, run_id):
     print(f"  ml_projections: {len(rows)}행 ({len(proj_df)} 관측치 × 3 model)")
     return len(rows)
 
-
-# ─── 메인 ────────────────────────────────────────────────────────────────────
 
 async def main():
     print("=" * 60)

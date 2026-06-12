@@ -34,9 +34,7 @@ from statsmodels.tsa.api import VAR
 from statsmodels.tsa.vector_ar.vecm import VECM
 from dateutil.relativedelta import relativedelta
 
-# ──────────────────────────────────────────────
 # 경로 설정
-# ──────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SA_DIR = os.path.join(BASE_DIR, "data", "processed", "phase1", "seasonal_adjusted")
 CHANGES_DIR = os.path.join(BASE_DIR, "data", "processed", "phase1", "changes")
@@ -44,9 +42,7 @@ CONFIG_PATH = os.path.join(BASE_DIR, "data", "processed", "product_config.json")
 ROUTING_PATH = os.path.join(BASE_DIR, "data", "processed", "phase3", "model_routing.json")
 PHASE4_DIR = os.path.join(BASE_DIR, "data", "processed", "phase4")
 
-# ──────────────────────────────────────────────
 # 파라미터
-# ──────────────────────────────────────────────
 IRF_HORIZON = 24            # IRF 산출 기간 (개월)
 ROLLING_WINDOW = 48         # warmup_end 산출용 롤링 윈도우
 VECM_DET = "ci"             # VECM deterministic: 'ci' = 상수항 in cointegrating relation
@@ -74,9 +70,7 @@ def load_changes_data(commodity_id: str) -> pd.DataFrame:
     return df
 
 
-# ──────────────────────────────────────────────
 # VECM 추정
-# ──────────────────────────────────────────────
 def estimate_vecm(pair_sa: pd.DataFrame, lag: int) -> dict:
     """
     VECM 추정. 수준(level) 데이터 입력.
@@ -138,9 +132,7 @@ def estimate_vecm(pair_sa: pd.DataFrame, lag: int) -> dict:
     }
 
 
-# ──────────────────────────────────────────────
 # VAR 추정
-# ──────────────────────────────────────────────
 def estimate_var(pair_changes: pd.DataFrame, pair_sa: pd.DataFrame, lag: int) -> dict:
     """
     VAR 추정. 변화율(차분) 데이터 입력.
@@ -208,9 +200,7 @@ def estimate_var(pair_changes: pd.DataFrame, pair_sa: pd.DataFrame, lag: int) ->
     }
 
 
-# ──────────────────────────────────────────────
 # 산출물 저장
-# ──────────────────────────────────────────────
 def save_model_params(commodity_id: str, segment: str, route: dict,
                       model_info: dict, output_dir: str):
     """모형 파라미터 JSON 저장"""
@@ -282,9 +272,7 @@ def save_ect(commodity_id: str, segment: str, ect_series: pd.Series,
     df.to_csv(path, encoding="utf-8-sig")
 
 
-# ──────────────────────────────────────────────
 # 통합 실행
-# ──────────────────────────────────────────────
 def run_phase4(sa_dir: str = SA_DIR,
                changes_dir: str = CHANGES_DIR,
                config_path: str = CONFIG_PATH,
@@ -380,12 +368,10 @@ def run_phase4(sa_dir: str = SA_DIR,
                     "estimation_end": estimation_end,
                 })
 
-    # ── 요약 저장 ──
     summary_df = pd.DataFrame(summary_rows)
     summary_path = os.path.join(output_dir, "phase4_summary.csv")
     summary_df.to_csv(summary_path, index=False, encoding="utf-8-sig")
 
-    # ── 요약 출력 ──
     print(f"\n{'=' * 60}")
     print("Phase 4 완료!")
     print(f"  모형 파라미터: {output_dir}/model_params/")
@@ -425,9 +411,7 @@ def run_phase4(sa_dir: str = SA_DIR,
     return summary_df
 
 
-# ──────────────────────────────────────────────
 # 엔트리포인트
-# ──────────────────────────────────────────────
 if __name__ == "__main__":
     warnings.filterwarnings("ignore", category=FutureWarning)
     warnings.filterwarnings("ignore", category=UserWarning)

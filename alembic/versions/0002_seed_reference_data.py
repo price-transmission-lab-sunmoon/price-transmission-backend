@@ -22,7 +22,6 @@ depends_on: str | None = None
 def upgrade() -> None:
     conn = op.get_bind()
 
-    # ── commodities 10행 (db_schema_vN §commodities 초기 데이터) ─────────────
     conn.execute(
         sa.text("""
             INSERT INTO commodities (commodity_id, name_kr, name_en, cluster, has_wholesale, route_type)
@@ -41,7 +40,6 @@ def upgrade() -> None:
         """)
     )
 
-    # ── segments 5행 (db_schema_vN §segments 초기 데이터) ────────────────────
     conn.execute(
         sa.text("""
             INSERT INTO segments
@@ -73,7 +71,6 @@ def upgrade() -> None:
         """)
     )
 
-    # ── external_events 5행 (db_schema_vN §external_events 초기 데이터) ──────
     conn.execute(
         sa.text("""
             INSERT INTO external_events (event_key, label_kr, start_date, end_date, color_hex)

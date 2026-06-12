@@ -16,7 +16,6 @@ from app.schemas.meta import (
     PipelineNode,
 )
 
-# ── PM 승인 전 임시 상수 (feature_spec §4.2) ─────────────────────────────────
 # PM 승인 후 settings.py 키 참조로 교체 예정.
 # 하드코딩 금지 원칙 준수: 응답 생성 코드는 반드시 이 딕셔너리를 참조한다.
 _DEFAULTS: dict = {
@@ -29,7 +28,6 @@ _DEFAULTS: dict = {
     "chow_test_points": ["2008-01", "2020-01", "2022-01"],  # → CHOW_TEST_POINTS
 }
 
-# ── 정적 노드 (11개, api_spec_v5 §/meta/pipeline) ────────────────────────────
 _PIPELINE_NODES: list[PipelineNode] = [
     PipelineNode(id="phase0",      label="Phase 0",    description="데이터 수집·전처리",  phase_number=0),
     PipelineNode(id="phase1",      label="Phase 1",    description="계절 조정 (STL)",     phase_number=1),
@@ -44,7 +42,6 @@ _PIPELINE_NODES: list[PipelineNode] = [
     PipelineNode(id="phase8",      label="Phase 8",    description="결과 종합·등급화",    phase_number=8),
 ]
 
-# ── 정적 엣지 (12개, api_spec_v5 §/meta/pipeline) ────────────────────────────
 _PIPELINE_EDGES: list[PipelineEdge] = [
     PipelineEdge(source="phase0",      target="phase1"),
     PipelineEdge(source="phase1",      target="phase2"),
@@ -60,7 +57,6 @@ _PIPELINE_EDGES: list[PipelineEdge] = [
     PipelineEdge(source="phase7_ml",   target="phase8"),
 ]
 
-# ── 정적 패턴 (3개, api_spec_v5 §/meta/analysis-params 원본 텍스트) ──────────
 # 텍스트 임의 수정 금지 — PM 승인 필요 (feature_spec §8 금지사항).
 _PATTERNS: list[PatternInfo] = [
     PatternInfo(

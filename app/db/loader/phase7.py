@@ -80,8 +80,6 @@ def _I(val) -> int | None:
         return None
 
 
-# ── stat_timeseries ──────────────────────────────────────────────────────────
-
 async def load_stat_timeseries(session: AsyncSession, run_id: int) -> int:
     """phase7/stat_timeseries/*.csv → stat_timeseries UPSERT.
 
@@ -173,8 +171,6 @@ async def load_stat_timeseries(session: AsyncSession, run_id: int) -> int:
     return total
 
 
-# ── anomaly_results 머지 헬퍼 ────────────────────────────────────────────────
-
 def _read_pattern_csvs(subdir: str, suffix: str) -> pd.DataFrame:
     """phase7/{subdir}/*{suffix}.csv 모두 합쳐 단일 DataFrame 반환 (segment→segment_id)."""
     pdir = _PHASE7_ROOT / subdir
@@ -205,8 +201,6 @@ def _read_ml_csvs(subdir: str, suffix: str) -> pd.DataFrame:
         return pd.DataFrame()
     return pd.concat(dfs, ignore_index=True)
 
-
-# ── anomaly_results ──────────────────────────────────────────────────────────
 
 async def load_anomaly_results(session: AsyncSession, run_id: int) -> int:
     """grades 기준으로 pattern1/2/3 + ml_predictions 머지하여 anomaly_results 적재.
@@ -365,8 +359,6 @@ async def load_anomaly_results(session: AsyncSession, run_id: int) -> int:
     return len(rows)
 
 
-# ── REFRESH MATERIALIZED VIEW ────────────────────────────────────────────────
-
 async def refresh_anomaly_density(session: AsyncSession) -> None:
     """mv_anomaly_density_yearly 갱신. 실패해도 적재 자체는 성공으로 처리."""
     try:
@@ -377,8 +369,6 @@ async def refresh_anomaly_density(session: AsyncSession) -> None:
         except Exception as e:
             logger.warning(f"MV refresh 실패 (무시): {e}")
 
-
-# ── 단일 트랜잭션 진입점 ──────────────────────────────────────────────────────
 
 async def load_phase7(session: AsyncSession, run_id: int) -> dict[str, int]:
     """Phase 7 단일 트랜잭션 — stat_timeseries + anomaly_results 적재.

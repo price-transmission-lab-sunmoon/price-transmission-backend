@@ -10,7 +10,6 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
-# ── /stat-snapshot ────────────────────────────────────────────────────────────
 
 class StatSnapshotIQRResponse(BaseModel):
     """metric=iqr — 롤링 IQR 박스플롯 데이터 (api_spec_vN §stat-snapshot)."""
@@ -47,8 +46,6 @@ StatSnapshotResponse = Annotated[
 ]
 
 
-# ── /irf ─────────────────────────────────────────────────────────────────────
-
 class IRFDataPoint(BaseModel):
     """IRF 곡선 단일 포인트 (api_spec_vN §irf)."""
     horizon: int
@@ -75,8 +72,6 @@ class IRFResponse(BaseModel):
     segment_id: str
     irfs: list[IRFCurve] = []
 
-
-# ── /ml-map ───────────────────────────────────────────────────────────────────
 
 class MLMapPoint(BaseModel):
     """ML 결과맵 단일 투영 포인트 (api_spec_vN §ml-map)."""

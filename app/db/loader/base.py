@@ -18,8 +18,6 @@ from app.core.exceptions import DBError
 logger = logging.getLogger(__name__)
 
 
-# ── 공통 유틸리티 ────────────────────────────────────────────────────────────
-
 def _v(val):
     """pandas NaN / None → Python None, 그 외 원형 반환."""
     if val is None:
@@ -32,8 +30,6 @@ def _v(val):
         pass
     return val
 
-
-# ── 날짜 유틸리티 ────────────────────────────────────────────────────────────
 
 def normalize_yyyymm_to_date(raw: str) -> date:
     """'YYYY-MM' 문자열 → date(YYYY, MM, 1).
@@ -63,8 +59,6 @@ def validate_period_day(d: date, table: str) -> None:
             {"table": table, "period_raw": str(d)},
         )
 
-
-# ── pipeline_runs CRUD ───────────────────────────────────────────────────────
 
 async def create_pipeline_run(
     session: AsyncSession,

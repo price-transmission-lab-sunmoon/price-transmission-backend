@@ -20,8 +20,6 @@ def _validate_period(v: str | date | None) -> str | None:
     raise ValueError(f"period는 YYYY-MM 형식이어야 합니다: {v!r}")
 
 
-# ── 공통 envelope ─────────────────────────────────────────────────────────────
-
 class TimeseriesEnvelope(BaseModel):
     requested_from: str
     requested_to: str
@@ -35,8 +33,6 @@ class TimeseriesEnvelope(BaseModel):
     def coerce_period(cls, v: str | date | None) -> str | None:
         return _validate_period(v)
 
-
-# ── /stream ───────────────────────────────────────────────────────────────────
 
 class StreamDataPoint(BaseModel):
     period: str
@@ -75,8 +71,6 @@ class StreamResponse(TimeseriesEnvelope):
     anomaly_nodes: list[AnomalyNode]
 
 
-# ── /scatter ──────────────────────────────────────────────────────────────────
-
 class ScatterPoint(BaseModel):
     period: str
     upstream_pct: float | None = None
@@ -101,8 +95,6 @@ class ScatterResponse(TimeseriesEnvelope):
     baseline: ScatterBaseline
     points: list[ScatterPoint]
 
-
-# ── /raw-prices ───────────────────────────────────────────────────────────────
 
 class RawPriceDataPoint(BaseModel):
     period: str
@@ -141,8 +133,6 @@ class RawPricesResponse(TimeseriesEnvelope):
     anomaly_nodes: list[RawPriceAnomalyNode]
 
 
-# ── /stat-series ─────────────────────────────────────────────────────────────
-
 class StatSeriesPoint(BaseModel):
     period: str
     transmission_rate: float | None = None
@@ -165,8 +155,6 @@ class StatSeriesResponse(TimeseriesEnvelope):
     data: list[StatSeriesPoint]
 
 
-# ── 미니맵 공통 ───────────────────────────────────────────────────────────────
-
 class AnomalyDensityPoint(BaseModel):
     """연도별 이상 밀도 포인트 (mv_anomaly_density_yearly 기준)."""
     period: str          # 연도 문자열 "2022"
@@ -175,14 +163,10 @@ class AnomalyDensityPoint(BaseModel):
     reference_count: int
 
 
-# ── /stream/minimap ────────────────────────────────────────────────────────────
-
 class StreamMinimapResponse(StreamResponse):
     """스트림 미니맵 응답 — StreamResponse + anomaly_density (api_spec_vN §stream/minimap)."""
     anomaly_density: list[AnomalyDensityPoint] = []
 
-
-# ── /raw-prices/minimap ───────────────────────────────────────────────────────
 
 class RawPricesMinimapResponse(RawPricesResponse):
     """원시 시계열 미니맵 응답 — RawPricesResponse + anomaly_density (api_spec_vN §raw-prices/minimap)."""

@@ -10,8 +10,6 @@ from fastapi.responses import JSONResponse
 logger = logging.getLogger("app")
 
 
-# ── 예외 클래스 계층 (exception_spec_vN §부록 A) ────────────────────────────
-
 class ProjectError(Exception):
     def __init__(self, code: str, message: str, context: dict | None = None):
         self.code = code
@@ -77,8 +75,6 @@ class ExternalAPIError(ProjectError):
         self.retry_count = retry_count
 
 
-# ── 에러 체이닝 (exception_design_vN §2) ────────────────────────────────────
-
 def _format_chain(chain: list[Exception]) -> str:
     """예외 체인을 ORIGIN → 현재 순으로 포맷팅 (exception_design_vN §2.2)."""
     lines: list[str] = []
@@ -122,16 +118,12 @@ def trace_error_chain(exc: Exception) -> dict:
     }
 
 
-# ── 응답 헬퍼 ────────────────────────────────────────────────────────────────
-
 def _error_body(code: str, message: str, context: dict | None = None) -> dict:
     body: dict = {"code": code, "message": message}
     if context:
         body["context"] = context
     return {"error": body}
 
-
-# ── 전역 예외 핸들러 (exception_design_vN §2.4 + frame_spec_vN §8.4) ────────────
 
 async def api_error_handler(request: Request, exc: APIError) -> JSONResponse:
     """APIError → http_status / public_code 반환."""

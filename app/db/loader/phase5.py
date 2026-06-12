@@ -61,7 +61,6 @@ async def load_granger_results(
         return 0
 
     try:
-        # ── granger_results UPSERT ────────────────────────────────────────────
         for _, row in df.iterrows():
             cid = str(row["commodity_id"])
             seg = str(row["segment"])
@@ -104,7 +103,6 @@ async def load_granger_results(
                 },
             )
 
-        # ── cointegration_results.granger_direction UPDATE ────────────────────
         # 4구간 품목 구간 C: (commodity_id, segment_id='C') 기준으로 갱신.
         # 두 방향 행(ppi_to_wholesale, wholesale_to_ppi)의 confirmed_direction 은 동일값이므로
         # 첫 번째 non-null 값을 사용.

@@ -35,15 +35,11 @@ from app.schemas.commodity import (  # noqa: E402
 )
 from app.schemas.meta import EventItem, EventListResponse, FreshnessResponse  # noqa: E402
 
-# ── 픽스처 로드 ───────────────────────────────────────────────────────────────
-
 _FIXTURE_PATH = Path(__file__).parent / "fixtures" / "reference_dummy.json"
 
 with _FIXTURE_PATH.open(encoding="utf-8") as _f:
     _FIXTURE: dict[str, Any] = json.load(_f)
 
-
-# ── 더미 응답 빌더 ─────────────────────────────────────────────────────────────
 
 def _build_commodity_list() -> CommodityListResponse:
     items = [
@@ -147,8 +143,6 @@ def _build_freshness() -> FreshnessResponse:
     )
 
 
-# ── DB override ───────────────────────────────────────────────────────────────
-
 async def _override_get_db():
     yield AsyncMock()
 
@@ -160,9 +154,7 @@ def _db_override():
     app.dependency_overrides.pop(get_db, None)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 1. GET /api/v1/commodities
-# ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_commodities_list_200():
@@ -237,9 +229,7 @@ async def test_commodities_3seg_segments():
             assert c["segments"] == ["A", "B", "C", "D"], f"4seg 구간 불일치: {c['segments']}"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 2. GET /api/v1/commodities/{id}
-# ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_commodity_detail_wheat_200():
@@ -339,9 +329,7 @@ async def test_commodity_detail_error_envelope():
         assert key in err, f"error 내 '{key}' 키 없음"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 3. GET /api/v1/segments
-# ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_segments_200():
@@ -413,9 +401,7 @@ async def test_segments_fields():
         assert isinstance(s["ml_applied"], bool)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 4. GET /api/v1/events
-# ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_events_200():
@@ -471,9 +457,7 @@ async def test_events_etag_stable():
     assert r1.headers["etag"] == r2.headers["etag"], "동일 데이터에 대해 ETag가 달라짐"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 5. GET /api/v1/freshness
-# ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_freshness_200():

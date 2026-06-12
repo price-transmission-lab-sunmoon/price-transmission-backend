@@ -97,7 +97,6 @@ async def get_stat_series(
         f"{anomaly_id}:{metric}:{from_ or 'default'}:{to or 'default'}:{granularity}"
     )
 
-    # ── Cache HIT 경로 ──────────────────────────────────────────────────────
     cached = await cache_get(redis, cache_key)
     if cached is not None:
         try:
@@ -121,7 +120,6 @@ async def get_stat_series(
             )
             await cache_delete(redis, cache_key)
 
-    # ── Cache MISS 경로 — 서비스 조회 후 캐시 적재 ──────────────────────────
     logger.info(
         "cache=miss",
         extra={"error_code": "CACHE", "context": {"cache_key": cache_key}},

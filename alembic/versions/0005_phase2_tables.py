@@ -23,7 +23,6 @@ depends_on: str | None = None
 
 
 def upgrade() -> None:
-    # ── stationarity_results ──────────────────────────────────────────────────
     # db_schema_v5 §stationarity_results 기준
     # UNIQUE (commodity_id, price_col)
     op.create_table(

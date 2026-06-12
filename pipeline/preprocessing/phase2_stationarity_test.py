@@ -38,17 +38,13 @@ import pandas as pd
 import numpy as np
 from statsmodels.tsa.stattools import adfuller, kpss
 
-# ──────────────────────────────────────────────
 # 경로 설정
-# ──────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SA_DIR = os.path.join(BASE_DIR, "data", "processed", "phase1", "seasonal_adjusted")
 CONFIG_PATH = os.path.join(BASE_DIR, "data", "processed", "product_config.json")
 PHASE2_DIR = os.path.join(BASE_DIR, "data", "processed", "phase2")
 
-# ──────────────────────────────────────────────
 # 검정 파라미터
-# ──────────────────────────────────────────────
 SIGNIFICANCE_LEVEL = 0.05
 ADF_AUTOLAG = "AIC"
 KPSS_REGRESSION = "c"       # 상수항만 포함 (추세 미포함)
@@ -78,9 +74,7 @@ def load_sa_data(commodity_id: str, sa_dir: str) -> pd.DataFrame:
     return df
 
 
-# ──────────────────────────────────────────────
 # ADF + KPSS 병행 검정
-# ──────────────────────────────────────────────
 def run_adf_test(series: pd.Series) -> dict:
     """
     ADF 검정 실행.
@@ -152,7 +146,6 @@ def test_stationarity(series: pd.Series) -> dict:
     -------
     dict : 수준 검정 결과, (필요 시) 차분 검정 결과, 최종 적분 차수
     """
-    # ── 수준(level) 검정 ──
     adf = run_adf_test(series)
     kpss_res = run_kpss_test(series)
     level_judgment = joint_judgment(adf["adf_stationary"], kpss_res["kpss_stationary"])
@@ -200,9 +193,7 @@ def test_stationarity(series: pd.Series) -> dict:
     return result
 
 
-# ──────────────────────────────────────────────
 # 통합 실행
-# ──────────────────────────────────────────────
 def run_phase2(sa_dir: str = SA_DIR,
                config_path: str = CONFIG_PATH,
                output_dir: str = PHASE2_DIR):
@@ -256,7 +247,6 @@ def run_phase2(sa_dir: str = SA_DIR,
                 print(f"  {col:25s} | {level_icon} {level_str}")
                 print(f"  {'':25s} | {diff_icon} {diff_str} | I({result['integration_order']})")
 
-    # ── 결과 저장 ──
     results_df = pd.DataFrame(all_results)
     results_path = os.path.join(output_dir, "stationarity_results.csv")
     results_df.to_csv(results_path, index=False, encoding="utf-8-sig")
@@ -265,7 +255,6 @@ def run_phase2(sa_dir: str = SA_DIR,
     with open(orders_path, "w", encoding="utf-8") as f:
         json.dump(integration_orders, f, indent=2, ensure_ascii=False)
 
-    # ── 요약 출력 ──
     print(f"\n{'=' * 60}")
     print("Phase 2 완료!")
     print(f"  검정 결과:     {results_path}")
@@ -303,9 +292,7 @@ def run_phase2(sa_dir: str = SA_DIR,
     return results_df, integration_orders
 
 
-# ──────────────────────────────────────────────
 # 엔트리포인트
-# ──────────────────────────────────────────────
 if __name__ == "__main__":
     warnings.filterwarnings("ignore", category=FutureWarning)
     run_phase2()

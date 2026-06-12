@@ -43,9 +43,7 @@ try:
 except ImportError:
     from pipeline.preprocessing.phase4_model_estimation import estimate_vecm, estimate_var
 
-# ──────────────────────────────────────────────
 # 설정
-# ──────────────────────────────────────────────
 SIGNIFICANCE_LEVEL = 0.05
 STABILITY_THRESHOLD = 0.03       # |상류 변화율| < 3% → 전이율 NaN (Phase 7 동일)
 MIN_SUBPERIOD_OBS = 60           # 하위 기간 최소 관측치
@@ -82,9 +80,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# ──────────────────────────────────────────────
 # 유틸리티
-# ──────────────────────────────────────────────
 def load_json(path):
     with open(path, encoding="utf-8-sig") as f:
         return json.load(f)
@@ -111,9 +107,7 @@ def load_sa(cid, sa_dir=SA_DIR):
     return df
 
 
-# ──────────────────────────────────────────────
 # 전이율 산출
-# ──────────────────────────────────────────────
 def compute_transmission_rate(df_changes, upstream_pct, downstream_pct):
     """
     전이율 = 하류 변화율 / 상류 변화율
@@ -142,9 +136,7 @@ def compute_transmission_rate(df_changes, upstream_pct, downstream_pct):
     return rate
 
 
-# ──────────────────────────────────────────────
 # Bai-Perron (Dynp + BIC)
-# ──────────────────────────────────────────────
 def compute_bic(signal, breakpoints):
     """
     BIC = n * ln(RSS/n) + k * ln(n)
@@ -231,9 +223,7 @@ def run_bai_perron(rate_series, min_size=None):
     return breakpoint_indices, best_k, bic_scores
 
 
-# ──────────────────────────────────────────────
 # Chow Test
-# ──────────────────────────────────────────────
 def chow_test(rate_series, break_date_str):
     """
     Chow Test: 특정 시점에서의 구조 변화 검정.
@@ -312,9 +302,7 @@ def chow_test(rate_series, break_date_str):
     }
 
 
-# ──────────────────────────────────────────────
 # 하위 기간 분할 및 병합
-# ──────────────────────────────────────────────
 def build_subperiods(rate_series, breakpoint_indices):
     """
     변화 시점을 기준으로 하위 기간 분할.
@@ -368,9 +356,7 @@ def build_subperiods(rate_series, breakpoint_indices):
     return result
 
 
-# ──────────────────────────────────────────────
 # 하위 기간 재추정
-# ──────────────────────────────────────────────
 def reestimate_subperiod(
     df_sa, df_changes, route, subperiod, output_dir, cid, seg, sp_idx
 ):
@@ -443,9 +429,7 @@ def reestimate_subperiod(
         return None
 
 
-# ──────────────────────────────────────────────
 # 구간별 Phase 6 실행
-# ──────────────────────────────────────────────
 def process_segment(cid, seg, route, df_changes, df_sa, baseline, output_dir):
     """단일 품목·구간에 대해 Bai-Perron + Chow + 하위 기간 분할 + 재추정"""
 
@@ -581,9 +565,7 @@ def process_segment(cid, seg, route, df_changes, df_sa, baseline, output_dir):
     }
 
 
-# ──────────────────────────────────────────────
 # 메인 파이프라인
-# ──────────────────────────────────────────────
 def run_phase6(
     product_config_path=PRODUCT_CONFIG_PATH,
     model_routing_path=MODEL_ROUTING_PATH,

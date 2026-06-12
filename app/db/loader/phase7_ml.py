@@ -164,8 +164,6 @@ async def load_ml_scores(session: AsyncSession, run_id: int) -> int:
     return len(rows)
 
 
-# ── ml_projections (PCA) ─────────────────────────────────────────────────────
-
 # 6 피처 고정 (회신 v2 §2.2 + pipeline_output_spec_v9 §Phase 7-ML)
 _PCA_FEATURE_COLS = [
     "transmission_rate",
@@ -337,8 +335,6 @@ async def load_ml_projections(session: AsyncSession, run_id: int) -> int:
     )
     return len(rows)
 
-
-# ── 단일 트랜잭션 진입점 ──────────────────────────────────────────────────────
 
 async def load_phase7_ml(session: AsyncSession, run_id: int) -> dict[str, int]:
     """Phase 7-ML 단일 트랜잭션 — ml_scores + ml_projections 적재.

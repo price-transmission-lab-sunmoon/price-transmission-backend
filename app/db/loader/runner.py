@@ -73,7 +73,6 @@ async def run_pipeline(
         """현재까지 완료된 Phase 번호 목록 (D-17 재시작 기준)."""
         return [str(p) for p in sorted(results["phases"].keys(), key=_phase_order_key)]
 
-    # ── Phase 2 ───────────────────────────────────────────────────────────────
     try:
         rows = await load_stationarity_results(session, run_id)
         results["phases"]["2"] = {"stationarity_results": rows}
@@ -86,7 +85,6 @@ async def run_pipeline(
         )
         raise
 
-    # ── Phase 3 ───────────────────────────────────────────────────────────────
     try:
         rows = await load_cointegration_results(session, run_id)
         results["phases"]["3"] = {"cointegration_results": rows}
@@ -99,7 +97,6 @@ async def run_pipeline(
         )
         raise
 
-    # ── Phase 4 ───────────────────────────────────────────────────────────────
     try:
         counts = await load_phase4(session, run_id)
         results["phases"]["4"] = counts
@@ -112,7 +109,6 @@ async def run_pipeline(
         )
         raise
 
-    # ── Phase 5 ───────────────────────────────────────────────────────────────
     try:
         rows = await load_granger_results(session, run_id)
         results["phases"]["5"] = {"granger_results": rows}
@@ -125,7 +121,6 @@ async def run_pipeline(
         )
         raise
 
-    # ── Phase 6 ───────────────────────────────────────────────────────────────
     try:
         counts = await load_phase6(session, run_id)
         results["phases"]["6"] = counts
@@ -138,7 +133,6 @@ async def run_pipeline(
         )
         raise
 
-    # ── Phase 7 ───────────────────────────────────────────────────────────────
     try:
         counts = await load_phase7(session, run_id)
         results["phases"]["7"] = counts
@@ -150,7 +144,6 @@ async def run_pipeline(
         )
         raise
 
-    # ── Phase 7-ML ────────────────────────────────────────────────────────────
     try:
         counts = await load_phase7_ml(session, run_id)
         results["phases"]["7-ml"] = counts
@@ -162,7 +155,6 @@ async def run_pipeline(
         )
         raise
 
-    # ── 완료 기록 ─────────────────────────────────────────────────────────────
     phases_run = _completed_phases()
     await update_pipeline_run_status(session, run_id, "completed", phases_run=phases_run)
     await upsert_data_freshness(session, run_id, data_up_to, next_run_date)

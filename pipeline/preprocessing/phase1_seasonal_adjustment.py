@@ -32,9 +32,7 @@ import pandas as pd
 from statsmodels.tsa.seasonal import STL
 from sklearn.linear_model import LinearRegression
 
-# ──────────────────────────────────────────────
 # 경로 설정
-# ──────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MERGED_DIR = os.path.join(BASE_DIR, "data", "processed", "merged")
 CONFIG_PATH = os.path.join(BASE_DIR, "data", "processed", "product_config.json")
@@ -45,9 +43,7 @@ CHANGES_DIR = os.path.join(PHASE1_DIR, "changes")
 STL_DIR = os.path.join(PHASE1_DIR, "stl_components")
 ROBUST_DIR = os.path.join(PHASE1_DIR, "robustness")
 
-# ──────────────────────────────────────────────
 # STL 파라미터
-# ──────────────────────────────────────────────
 STL_PERIOD = 12          # 월별 데이터 → 12개월 주기
 STL_ROBUST = True        # 이상치에 강건한 추정
 # seasonal, trend 윈도우는 statsmodels 기본값 사용 (seasonal=7, trend=auto)
@@ -85,9 +81,7 @@ def get_analysis_columns(config_entry: dict) -> list:
     return sorted(cols)
 
 
-# ──────────────────────────────────────────────
 # Step 1: STL 분해 및 계절 조정
-# ──────────────────────────────────────────────
 def apply_stl(series: pd.Series, period: int = STL_PERIOD,
               robust: bool = STL_ROBUST) -> dict:
     """
@@ -148,9 +142,7 @@ def process_stl_commodity(df: pd.DataFrame, analysis_cols: list) -> tuple:
     return sa_df, stl_df
 
 
-# ──────────────────────────────────────────────
 # Step 2: 전월 대비 변화율 산출
-# ──────────────────────────────────────────────
 def compute_pct_change(sa_df: pd.DataFrame) -> pd.DataFrame:
     """
     계절 조정 시계열에서 전월 대비 변화율(%)을 산출한다.
@@ -185,9 +177,7 @@ def compute_exog_pct_change(df: pd.DataFrame, exog_cols: list) -> pd.DataFrame:
     return pd.DataFrame(records, index=df.index)
 
 
-# ──────────────────────────────────────────────
 # Step 3: 계절 더미 방식 (로버스트니스 체크용)
-# ──────────────────────────────────────────────
 def apply_seasonal_dummy(series: pd.Series) -> pd.Series:
     """
     월별 더미 변수 OLS 회귀로 계절 성분을 추정·제거한다.
@@ -238,9 +228,7 @@ def process_dummy_commodity(df: pd.DataFrame, analysis_cols: list) -> tuple:
     return dummy_sa_df, dummy_pct_df
 
 
-# ──────────────────────────────────────────────
 # 통합 실행
-# ──────────────────────────────────────────────
 def run_phase1(merged_dir: str = MERGED_DIR,
                config_path: str = CONFIG_PATH,
                output_base: str = PHASE1_DIR):
@@ -360,9 +348,7 @@ def run_phase1(merged_dir: str = MERGED_DIR,
     return summary_df
 
 
-# ──────────────────────────────────────────────
 # 엔트리포인트
-# ──────────────────────────────────────────────
 if __name__ == "__main__":
     warnings.filterwarnings("ignore", category=FutureWarning)
     run_phase1()

@@ -25,7 +25,6 @@ depends_on: str | None = None
 
 
 def upgrade() -> None:
-    # ── model_params ──────────────────────────────────────────────────────────
     # db_schema_v5 §model_params 기준
     # UNIQUE (commodity_id, segment_id, subperiod_id)
     op.create_table(
@@ -73,7 +72,6 @@ def upgrade() -> None:
         ),
     )
 
-    # ── irf_data ──────────────────────────────────────────────────────────────
     # db_schema_v5 §irf_data 기준
     # UNIQUE (commodity_id, segment_id, subperiod_id, horizon)
     op.create_table(
@@ -120,7 +118,6 @@ def upgrade() -> None:
         ["commodity_id", "segment_id", "subperiod_id"],
     )
 
-    # ── granger_results ───────────────────────────────────────────────────────
     # db_schema_v5 §granger_results 기준
     # 4구간 품목(groundnuts, banana, orange) 구간 C만 존재
     # UNIQUE (commodity_id, segment_id, direction)
@@ -158,7 +155,6 @@ def upgrade() -> None:
         ),
     )
 
-    # ── baselines.subperiod_id FK 추가 ────────────────────────────────────────
     # 0003_add_baselines.py 에서 컬럼만 선언했고 FK가 없었음.
     # subperiods(0006) 생성 후 이 revision 에서 FK 제약 추가.
     op.create_foreign_key(

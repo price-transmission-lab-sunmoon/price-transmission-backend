@@ -44,8 +44,6 @@ def _call_pipeline(fn, *args, **kwargs):
     return result
 
 
-# ── Phase 실행 ────────────────────────────────────────────────────────────────
-
 async def _run_phase(phase: str, run_id: int) -> None:
     """Phase 실행 — 파이프라인 계산 + DB 적재.
 
@@ -190,8 +188,6 @@ async def _run_phase(phase: str, run_id: int) -> None:
         )
 
 
-# ── 배치 초기화 — run_id 확보 ─────────────────────────────────────────────────
-
 async def _prepare_run(
     run_date: date,
     data_up_to: date,
@@ -276,8 +272,6 @@ async def _prepare_run(
     }
     return run_id, resp
 
-
-# ── Phase 순차 실행 + 최종 DB 기록 ────────────────────────────────────────────
 
 async def _execute_phases(
     run_id: int,
@@ -404,8 +398,6 @@ async def _execute_phases(
     )
 
 
-# ── 공개 진입점 ───────────────────────────────────────────────────────────────
-
 def _calc_dates(run_date: date) -> tuple[date, date]:
     """배치 실행일로부터 data_up_to, next_run_date 계산."""
     # data_up_to: 전월 1일 (db_schema_vN §설계원칙 6, DB-TYPE-001 방지)
@@ -452,8 +444,6 @@ async def run_monthly_pipeline(run_date: Optional[date] = None) -> None:
 
     await _execute_phases(run_id, run_date, data_up_to, next_run_date)
 
-
-# ── APScheduler 인스턴스 팩토리 ───────────────────────────────────────────────
 
 async def invalidate_cache(pipeline_run_id: int) -> None:
     """배치 완료 후 시계열 캐시 패턴 전체 삭제 (feature_spec_BE-REDIS_v2 §1.2).
