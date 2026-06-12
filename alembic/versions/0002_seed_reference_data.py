@@ -1,7 +1,4 @@
-"""0002_seed_reference_data
-
-commodities 10행 + segments 5행 + external_events 5행 시드 적재.
-출처: db_schema_vN §초기 데이터 (frame_spec_vN §8.9, §8.1).
+"""0002_seed_reference_data: commodities 10행 + segments 5행 + external_events 5행 시드 적재.
 
 Revision ID: 0002
 Revises: 0001

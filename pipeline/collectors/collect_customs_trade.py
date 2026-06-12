@@ -1,12 +1,8 @@
 """관세청 수출입무역통계 Open API — 월별 수입단가($/톤) 수집.
 
-EXIM_API_KEY(공공데이터포털) 사용. Excel 수동 다운로드 대체.
-실행: python -m pipeline.collectors.collect_customs_trade
-
-API 특성:
-- numOfRows=1000 시 응답이 매우 느림(타임아웃 발생) → 100 사용
-- totalCount 필드 없음 → len(items) < numOfRows 로 마지막 페이지 판단
-- 응답 구조: HS코드×수출국×월 단위 행 → 월별 합산 필요
+EXIM_API_KEY(공공데이터포털) 사용.
+numOfRows=1000은 타임아웃 발생 → 100 사용.
+totalCount 필드 없음 → len(items) < numOfRows 로 마지막 페이지 판단.
 """
 from __future__ import annotations
 
@@ -32,7 +28,7 @@ RAW_DIR = PROJECT_ROOT / "data" / "raw" / "customs"
 RAW_DIR.mkdir(parents=True, exist_ok=True)
 
 API_URL = "http://apis.data.go.kr/1220000/nitemtrade/getNitemtradeList"
-PAGE_SIZE = 100   # 1000은 서버 응답이 매우 느림
+PAGE_SIZE = 100   # 1000은 타임아웃 발생
 REQUEST_DELAY = 0.2  # 초
 MAX_RETRIES = 3
 
@@ -53,7 +49,7 @@ HS4_TO_COMMODITY: dict[str, str] = {
 
 
 def _fetch_page(hs4: str, yymm: str, page: int) -> ET.Element | None:
-    """단일 월(yymm='202201')의 특정 페이지를 가져온다."""
+    """단일 월의 특정 페이지를 호출한다."""
     params = {
         "serviceKey": API_KEY,
         "strtYymm": yymm,
@@ -77,7 +73,7 @@ def _fetch_page(hs4: str, yymm: str, page: int) -> ET.Element | None:
 
 
 def _collect_one_month(hs4: str, yymm: str) -> tuple[float, float]:
-    """한 달치 HS4 전국 수입총액(USD)·중량(kg) 합계를 반환."""
+    """한 달치 HS4 수입총액(USD)·중량(kg) 합계 반환."""
     total_dlr = 0.0
     total_wgt = 0.0
     page = 1

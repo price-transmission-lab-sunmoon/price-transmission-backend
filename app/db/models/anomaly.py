@@ -1,6 +1,4 @@
-"""ORM 모델 — anomaly_results, asymmetry_results + feat/be-api-panel 추가 모델
-(db_schema_vN §이상 탐지·ML·Phase 4~6 테이블).
-"""
+"""ORM 모델 — anomaly_results, asymmetry_results 및 관련 테이블."""
 from sqlalchemy import (
     TIMESTAMP,
     Boolean,
@@ -63,10 +61,10 @@ class AnomalyResult(Base):
     lof_anomaly = Column(Boolean)
     svm_anomaly = Column(Boolean)
 
-    # 신뢰도 등급 (D-02: NOT NULL)
+    # 신뢰도 등급
     confidence_grade = Column(String(15), nullable=False)  # 'high'|'medium'|'reference'
 
-    subperiod_id = Column(Integer)  # feat/pipeline-phase6-7에서 FK 추가
+    subperiod_id = Column(Integer)
     is_new = Column(Boolean, nullable=False, default=False)
 
     pipeline_run_id = Column(Integer, ForeignKey("pipeline_runs.id"))
@@ -74,7 +72,6 @@ class AnomalyResult(Base):
 
     __table_args__ = (
         UniqueConstraint("commodity_id", "segment_id", "period", name="uq_anomaly_commodity_segment_period"),
-        # db_schema_vN §anomaly_results 인덱스
         Index("idx_anomaly_commodity_period", "commodity_id", text("period DESC")),
         Index("idx_anomaly_grade", "confidence_grade", text("period DESC")),
         Index(
@@ -117,7 +114,7 @@ class AsymmetryResult(Base):
 
 
 class Subperiod(Base):
-    """db_schema_vN §subperiods — Phase 6 하위 기간 분할."""
+    """Phase 6 하위 기간 분할."""
     __tablename__ = "subperiods"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -138,7 +135,7 @@ class Subperiod(Base):
 
 
 class Breakpoint(Base):
-    """db_schema_vN §breakpoints — Phase 6 구조 변화 시점 (D-16: bp_dates 출처)."""
+    """Phase 6 구조 변화 시점."""
     __tablename__ = "breakpoints"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -167,10 +164,7 @@ class Breakpoint(Base):
 
 
 class Baseline(Base):
-    """db_schema_vN §baselines — Phase 4 기준선 파라미터.
-
-    D-15: subperiod_id IS NULL 조건으로 전체 기간 기준선만 API에 노출.
-    """
+    """Phase 4 기준선 파라미터. subperiod_id IS NULL = 전체 기간."""
     __tablename__ = "baselines"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -178,7 +172,7 @@ class Baseline(Base):
     segment_id = Column(String(10), ForeignKey("segments.segment_id"), nullable=False)
     subperiod_id = Column(Integer, ForeignKey("subperiods.id"))  # NULL = 전체 기간
 
-    normal_transmission_lag = Column(SmallInteger, nullable=False)  # → API normal_lag
+    normal_transmission_lag = Column(SmallInteger, nullable=False)
     transmission_elasticity = Column(Numeric(10, 4), nullable=False)
     warmup_end = Column(Date, nullable=False)
     model_type = Column(String(10), nullable=False)   # 'VAR'|'VECM'
@@ -195,10 +189,7 @@ class Baseline(Base):
 
 
 class IRFData(Base):
-    """db_schema_vN §irf_data — Phase 4 IRF 곡선.
-
-    irf_peak_horizon·irf_peak_magnitude 는 horizon=0 행에만 저장.
-    """
+    """Phase 4 IRF 곡선. irf_peak_horizon·irf_peak_magnitude 는 horizon=0 행에만 저장."""
     __tablename__ = "irf_data"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -224,11 +215,7 @@ class IRFData(Base):
 
 
 class CointegrationResult(Base):
-    """db_schema_vN §cointegration_results — Phase 3 Johansen 공적분 검정 결과.
-
-    UNIQUE (commodity_id, segment_id) — subperiod_id 없음, 전체 기간 단일 행.
-    /detail stat_metrics.cointegrated·model_type 출처.
-    """
+    """Phase 3 Johansen 공적분 검정 결과. 전체 기간 단일 행."""
     __tablename__ = "cointegration_results"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -263,10 +250,7 @@ class CointegrationResult(Base):
 
 
 class MLScore(Base):
-    """db_schema_vN §ml_scores — Phase 7-ML 모델별 이상 점수.
-
-    조인 키: (commodity_id, segment_id, period) — anomaly_results와 FK 없음.
-    """
+    """Phase 7-ML 모델별 이상 점수. anomaly_results와 FK 없음."""
     __tablename__ = "ml_scores"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -299,10 +283,7 @@ class MLScore(Base):
 
 
 class MLProjection(Base):
-    """db_schema_vN §ml_projections — Phase 7-ML ML 결과맵 2D 투영.
-
-    OI-15 보류: projection_method 확정 대기.
-    """
+    """Phase 7-ML ML 결과맵 2D 투영."""
     __tablename__ = "ml_projections"
 
     id = Column(Integer, primary_key=True, autoincrement=True)

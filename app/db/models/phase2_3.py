@@ -1,11 +1,4 @@
-"""ORM models — Phase 2~3 계량 테이블
-
-frame_spec_backend_vN §8.6 분할 기준:
-  stationarity_results (Phase 2)
-  cointegration_results (Phase 3)
-
-db_schema_v5 컬럼명·타입 기준으로 작성.
-"""
+"""ORM models — Phase 2~3 계량 테이블 (stationarity_results, cointegration_results)."""
 from __future__ import annotations
 
 from sqlalchemy import (
@@ -26,7 +19,7 @@ from app.db.base import Base
 
 
 class StationarityResult(Base):
-    """Phase 2 ADF+KPSS 정상성 검정 결과 — db_schema_v5 §stationarity_results"""
+    """Phase 2 ADF+KPSS 정상성 검정 결과."""
 
     __tablename__ = "stationarity_results"
 
@@ -62,11 +55,7 @@ class StationarityResult(Base):
 
 
 class CointegrationResult(Base):
-    """Phase 3 Johansen 공적분 검정 결과 — db_schema_v5 §cointegration_results
-
-    0004_add_cointegration_results.py 에서 테이블 정의 완료.
-    ORM 모델만 이 파일에 선언한다.
-    """
+    """Phase 3 Johansen 공적분 검정 결과."""
 
     __tablename__ = "cointegration_results"
 
@@ -81,7 +70,7 @@ class CointegrationResult(Base):
     integration_order_match: Mapped[bool | None] = mapped_column(Boolean)
     coint_tested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
-    # Johansen 검정 (p값은 라이브러리 미제공 → NULL 적재)
+    # Johansen 검정 (p값은 라이브러리 미제공 시 NULL)
     trace_stat: Mapped[float | None] = mapped_column(Numeric(10, 4))
     trace_pvalue: Mapped[float | None] = mapped_column(Numeric(8, 4))
     maxeig_stat: Mapped[float | None] = mapped_column(Numeric(10, 4))
@@ -91,8 +80,7 @@ class CointegrationResult(Base):
     i2_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     model_type: Mapped[str | None] = mapped_column(String(10))  # 'VAR' | 'VECM'
-    # Phase 5 적재 시 UPDATE로 채워짐 (4구간 구간 C만)
-    granger_direction: Mapped[str | None] = mapped_column(String(30))
+    granger_direction: Mapped[str | None] = mapped_column(String(30))  # Phase 5에서 UPDATE
 
     pipeline_run_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("pipeline_runs.id"))
     created_at: Mapped[str] = mapped_column(TIMESTAMP(timezone=True), server_default="now()")

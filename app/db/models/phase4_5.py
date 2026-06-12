@@ -1,13 +1,4 @@
-"""ORM models — Phase 4~5 계량 테이블
-
-frame_spec_backend_vN §8.6 분할 기준:
-  model_params (Phase 4)
-  irf_data     (Phase 4)
-  baselines    (Phase 4) — 0003_add_baselines.py 에서 테이블 정의 완료, ORM만 선언
-  granger_results (Phase 5)
-
-db_schema_v5 컬럼명·타입 기준으로 작성.
-"""
+"""ORM models — Phase 4~5 계량 테이블 (model_params, irf_data, baselines, granger_results)."""
 from __future__ import annotations
 
 from sqlalchemy import (
@@ -26,15 +17,14 @@ from app.db.base import Base
 
 
 class ModelParams(Base):
-    """Phase 4 VAR/VECM 추정 파라미터 — db_schema_v5 §model_params"""
+    """Phase 4 VAR/VECM 추정 파라미터."""
 
     __tablename__ = "model_params"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     commodity_id: Mapped[str] = mapped_column(String(20), ForeignKey("commodities.commodity_id"), nullable=False)
     segment_id: Mapped[str] = mapped_column(String(10), ForeignKey("segments.segment_id"), nullable=False)
-    # NULL = 전체 기간 모형 (Phase 6 완료 전 기본값)
-    subperiod_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("subperiods.id"))
+    subperiod_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("subperiods.id"))  # NULL = 전체 기간
 
     model_type: Mapped[str] = mapped_column(String(10), nullable=False)   # 'VAR' | 'VECM'
     lag_selected: Mapped[int] = mapped_column(SmallInteger, nullable=False)
@@ -55,15 +45,14 @@ class ModelParams(Base):
 
 
 class IrfData(Base):
-    """Phase 4 IRF 곡선 데이터 — db_schema_v5 §irf_data"""
+    """Phase 4 IRF 곡선 데이터."""
 
     __tablename__ = "irf_data"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     commodity_id: Mapped[str] = mapped_column(String(20), ForeignKey("commodities.commodity_id"), nullable=False)
     segment_id: Mapped[str] = mapped_column(String(10), ForeignKey("segments.segment_id"), nullable=False)
-    # NULL = 전체 기간
-    subperiod_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("subperiods.id"))
+    subperiod_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("subperiods.id"))  # NULL = 전체 기간
 
     horizon: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     irf_downstream: Mapped[float] = mapped_column(Numeric(12, 6), nullable=False)
@@ -79,23 +68,17 @@ class IrfData(Base):
 
 
 class Baseline(Base):
-    """Phase 4 기준선 파라미터 — db_schema_v5 §baselines
-
-    0003_add_baselines.py 에서 테이블 정의 완료.
-    ORM 모델만 이 파일에 선언한다.
-    """
+    """Phase 4 기준선 파라미터. subperiod_id IS NULL = 전체 기간."""
 
     __tablename__ = "baselines"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     commodity_id: Mapped[str] = mapped_column(String(20), ForeignKey("commodities.commodity_id"), nullable=False)
     segment_id: Mapped[str] = mapped_column(String(10), ForeignKey("segments.segment_id"), nullable=False)
-    # NULL = 전체 기간 기준선 (D-15)
-    subperiod_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("subperiods.id"))
+    subperiod_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("subperiods.id"))  # NULL = 전체 기간
 
     normal_transmission_lag: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     transmission_elasticity: Mapped[float] = mapped_column(Numeric(10, 4), nullable=False)
-    # estimation_start + 48개월 (D-06)
     warmup_end: Mapped[Date] = mapped_column(Date, nullable=False)
     model_type: Mapped[str] = mapped_column(String(10), nullable=False)
     estimation_start: Mapped[Date] = mapped_column(Date, nullable=False)
@@ -107,16 +90,12 @@ class Baseline(Base):
 
 
 class GrangerResult(Base):
-    """Phase 5 Granger 인과 검정 결과 — db_schema_v5 §granger_results
-
-    4구간 품목(groundnuts, banana, orange) 구간 C에만 존재.
-    """
+    """Phase 5 Granger 인과 검정 결과. 4구간 품목 구간 C에만 존재."""
 
     __tablename__ = "granger_results"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     commodity_id: Mapped[str] = mapped_column(String(20), ForeignKey("commodities.commodity_id"), nullable=False)
-    # DEFAULT 'C' (D-10)
     segment_id: Mapped[str] = mapped_column(String(10), ForeignKey("segments.segment_id"), nullable=False, default="C")
 
     direction: Mapped[str] = mapped_column(String(30), nullable=False)  # 'ppi_to_wholesale' | 'wholesale_to_ppi'
