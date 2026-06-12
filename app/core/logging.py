@@ -1,4 +1,4 @@
-"""구조화 JSON 로깅 초기화 — exception_spec_vN §부록 A 예시 형식."""
+"""구조화 JSON 로깅 초기화."""
 import io
 import json
 import logging

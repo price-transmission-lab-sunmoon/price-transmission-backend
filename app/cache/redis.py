@@ -1,4 +1,4 @@
-"""Redis 클라이언트 초기화·ping·캐시 헬퍼 — exception_spec_vN DB-CACHE-001/002, PARSE-REDIS-001 대응."""
+"""Redis 클라이언트 초기화, ping, 캐시 헬퍼."""
 from __future__ import annotations
 
 import json
@@ -28,14 +28,14 @@ def get_redis_client() -> aioredis.Redis:
 
 
 async def ping_redis() -> bool:
-    """Redis 연결 확인. 실패 시 WARN 후 False 반환 (서비스 중단 없음, DB-CACHE-001)."""
+    """Redis 연결 확인 — 실패 시 경고만 출력하고 False 반환."""
     try:
         client = get_redis_client()
         await client.ping()
         return True
     except Exception as e:
         logger.warning(
-            "Redis 연결 실패 — 캐시 없이 DB 직접 조회",
+            "Redis 연결 실패 — 캐시 없이 DB 직접 조회 (DB-CACHE-001)",
             extra={"error_code": "DB-CACHE-001", "context": {"error": str(e)}},
         )
         return False
@@ -54,16 +54,8 @@ def _redacted_redis_url() -> str:
     return url.split("@")[-1] if "@" in url else url
 
 
-# feature_spec_BE-REDIS_v2 §1.2 데이터 흐름 / §5 예외처리 대응
-
-
 async def cache_get(client: aioredis.Redis, key: str) -> dict | None:
-    """Redis에서 값을 읽어 dict로 반환한다.
-
-    - 연결 실패 → DB-CACHE-001: WARN + None 반환 (DB 폴백으로 이어짐)
-    - JSON 역직렬화 실패 → DB-CACHE-002: WARN + 해당 키 삭제 + None 반환
-    - 키 없음 → None 반환 (cache MISS)
-    """
+    """Redis에서 값을 읽어 dict로 반환. 연결 실패·역직렬화 오류 시 None 반환."""
     try:
         raw: str | None = await client.get(key)
     except Exception as e:
@@ -104,10 +96,7 @@ async def cache_get(client: aioredis.Redis, key: str) -> dict | None:
 
 
 async def cache_set(client: aioredis.Redis, key: str, value: dict, ttl: int) -> None:
-    """Redis에 dict를 JSON 직렬화하여 TTL과 함께 저장한다.
-
-    연결 실패 → DB-CACHE-001: WARN + 무시 (서비스 중단 없음)
-    """
+    """Redis에 dict를 JSON 직렬화하여 TTL과 함께 저장 — 연결 실패 시 무시."""
     try:
         await client.set(key, json.dumps(value, ensure_ascii=False), ex=ttl)
     except Exception as e:
@@ -134,10 +123,7 @@ async def cache_delete(client: aioredis.Redis, key: str) -> None:
 
 
 async def cache_delete_pattern(client: aioredis.Redis, pattern: str) -> int:
-    """SCAN으로 패턴 매칭 키를 모두 삭제하고 삭제 건수를 반환한다.
-
-    연결 실패 → DB-CACHE-001: WARN + 0 반환
-    """
+    """SCAN으로 패턴 매칭 키를 모두 삭제하고 삭제 건수를 반환."""
     try:
         keys: list[str] = []
         async for key in client.scan_iter(match=pattern, count=100):
@@ -163,6 +149,7 @@ async def cache_delete_pattern(client: aioredis.Redis, pattern: str) -> int:
 
 T = TypeVar("T", bound=BaseModel)
 
+# TODO: TTL을 엔드포인트별로 분리 적용하는 방안 검토
 
 async def cached_or_compute(
     client: aioredis.Redis,
@@ -172,9 +159,9 @@ async def cached_or_compute(
     *,
     ttl: int | None = None,
 ) -> T:
-    """캐시 조회 → HIT 검증 → MISS 시 compute() 후 적재 (feature_spec_BE-REDIS_v2 §3.3).
+    """캐시 HIT 시 Pydantic 검증 후 반환, MISS 시 compute() 실행 후 적재.
 
-    HIT 값 Pydantic 검증 실패(PARSE-REDIS-001) 시 캐시 무효화 후 compute() 폴백.
+    HIT 값 검증 실패 시 캐시 무효화 후 compute() 폴백.
     """
     cached = await cache_get(client, cache_key)
     if cached is not None:

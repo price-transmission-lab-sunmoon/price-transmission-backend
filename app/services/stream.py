@@ -1,4 +1,4 @@
-"""스트림 그래프·미니맵 비즈니스 로직 (feature_spec_API-STR_v5 §1.2).
+"""스트림 그래프·미니맵 비즈니스 로직.
 
 엔드포인트: GET /commodities/{id}/stream
             GET /commodities/{id}/stream/minimap
@@ -87,7 +87,7 @@ async def get_stream(
     grade_str: str,
     patterns_str: str,
 ) -> StreamResponse:
-    """스트림 그래프 시계열 + 이상 노드 반환 (feature_spec_API-STR_v5 §1.2)."""
+    """스트림 그래프 시계열 + 이상 노드 반환."""
     # 1. granularity 검증 (API-STR-004)
     if granularity not in ("monthly", "quarterly", "yearly"):
         raise APIError(
@@ -153,7 +153,7 @@ async def get_stream(
             public_code="INTERNAL_ERROR",
         ) from e
 
-    # 6. 이상 노드 조회 (anomaly_results — 항상 월 단위, api_spec_vN §granularity 동작 규칙)
+    # 6. 이상 노드 조회 (anomaly_results — 항상 월 단위)
     try:
         anomaly_result = await db.execute(
             select(AnomalyResult)
@@ -284,7 +284,7 @@ async def get_stream_minimap(
     commodity_segments: list[str],
     segments_str: str | None,
 ) -> StreamMinimapResponse:
-    """스트림 미니맵 — 전체 기간 yearly 고정 + mv_anomaly_density_yearly (feature_spec_API-STR_v5 §1.2)."""
+    """스트림 미니맵 — 전체 기간 yearly 고정 + mv_anomaly_density_yearly."""
     # 구간 필터 파싱 및 검증 (API-SEG-001)
     segments_filter: list[str] = (
         [s.strip() for s in segments_str.split(",") if s.strip()]

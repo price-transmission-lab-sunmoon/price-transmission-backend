@@ -1,11 +1,4 @@
-"""
-Phase 0 전처리 — Step 3: 결측치 처리
-==============================================
-- 선형 보간 (linear interpolation) 적용
-- 결측률 10% 이상 품목 제외
-- 연속 결측 3개월 이상 구간 플래그
-실행: python src/preprocessing/step3_missing_values.py
-"""
+"""Step 3: 결측치 분석 및 선형 보간. 결측률 10% 이상 품목 플래그."""
 
 import json
 import pandas as pd
@@ -19,7 +12,7 @@ PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def load_common_periods():
-    """Step 2에서 산출한 품목별 공통 기간 로드"""
+    """Step 2 산출 공통 기간 로드."""
     cp_path = PROCESSED_DIR / "common_periods.csv"
     if not cp_path.exists():
         print("  ❌ common_periods.csv 없음. Step 2를 먼저 실행하세요.")
@@ -29,7 +22,7 @@ def load_common_periods():
 
 
 def find_consecutive_missing(series, threshold=3):
-    """연속 결측 구간 탐지 — threshold 이상 연속 NaN 구간의 시작·종료 인덱스 반환"""
+    """threshold 이상 연속 NaN 구간의 (시작, 종료, 길이) 반환."""
     is_null = series.isna()
     groups = []
     count = 0
@@ -46,7 +39,6 @@ def find_consecutive_missing(series, threshold=3):
             count = 0
             start_idx = None
 
-    # 마지막 구간 처리
     if count >= threshold:
         groups.append((start_idx, len(is_null) - 1, count))
 
@@ -58,17 +50,14 @@ def check_missing_values():
     print("  Step 3: 결측치 처리")
     print("=" * 60)
 
-    # 공통 기간 로드
     common_periods = load_common_periods()
     if common_periods is None:
         return
 
-    # 매핑 파일
     mapping_path = PROJECT_ROOT / "config" / "commodity_mapping.json"
     with open(mapping_path, "r", encoding="utf-8") as f:
         mapping = json.load(f)
 
-    # 소스 데이터 로드
     wb = pd.read_csv(PROCESSED_DIR / "worldbank_prices_krw.csv", parse_dates=["date"])
     customs = pd.read_csv(RAW_DIR / "customs" / "customs_import_prices.csv", parse_dates=["date"])
     ecos = pd.read_csv(RAW_DIR / "ecos" / "ecos_ppi_cpi.csv", parse_dates=["date"])
@@ -76,7 +65,6 @@ def check_missing_values():
     kamis_path = RAW_DIR / "kamis" / "kamis_wholesale_monthly.csv"
     kamis = pd.read_csv(kamis_path, parse_dates=["date"]) if kamis_path.exists() else pd.DataFrame()
 
-    # 날짜 통일
     for df in [wb, customs, ecos, kamis]:
         if not df.empty and "date" in df.columns:
             df["date"] = df["date"].dt.to_period("M").dt.to_timestamp()
@@ -93,7 +81,6 @@ def check_missing_values():
         name_kr = commodity["name_kr"]
         has_wholesale = commodity.get("has_wholesale", False)
 
-        # 해당 품목의 공통 기간
         cp_row = common_periods[common_periods["commodity_id"] == cid]
         if cp_row.empty or cp_row.iloc[0]["common_months"] == 0:
             print(f"  {name_kr:<12} — 공통 기간 없음, 건너뜀")
@@ -102,28 +89,23 @@ def check_missing_values():
         start = cp_row.iloc[0]["common_start"]
         end = cp_row.iloc[0]["common_end"]
 
-        # 기간 내 월별 인덱스 생성
         date_range = pd.date_range(start=start, end=end, freq="MS")
         total_months = len(date_range)
 
-        # 소스별 결측치 분석
         source_checks = []
 
-        # 1) 국제가 (원화 환산)
         wb_sub = wb[(wb["commodity_id"] == cid) & (wb["date"].isin(date_range))]
         wb_full = pd.DataFrame({"date": date_range}).merge(
             wb_sub[["date", "price_krw_mt"]], on="date", how="left"
         )
         source_checks.append(("국제가(원화)", wb_full, "price_krw_mt"))
 
-        # 2) 수입단가
         cu_sub = customs[(customs["commodity_id"] == cid) & (customs["date"].isin(date_range))]
         cu_full = pd.DataFrame({"date": date_range}).merge(
             cu_sub[["date", "import_unit_price"]], on="date", how="left"
         )
         source_checks.append(("수입단가", cu_full, "import_unit_price"))
 
-        # 3) PPI
         ppi_sub = ecos[
             (ecos["commodity_id"] == cid) &
             (ecos["data_type"] == "ppi") &
@@ -134,7 +116,6 @@ def check_missing_values():
         )
         source_checks.append(("PPI", ppi_full, "value"))
 
-        # 4) CPI
         cpi_sub = ecos[
             (ecos["commodity_id"] == cid) &
             (ecos["data_type"] == "cpi") &
@@ -145,7 +126,6 @@ def check_missing_values():
         )
         source_checks.append(("CPI", cpi_full, "value"))
 
-        # 5) KAMIS 도매가 (해당 품목만)
         if has_wholesale and not kamis.empty:
             kamis_sub = kamis[(kamis["commodity_id"] == cid) & (kamis["date"].isin(date_range))]
             kamis_full = pd.DataFrame({"date": date_range}).merge(
@@ -153,19 +133,15 @@ def check_missing_values():
             )
             source_checks.append(("KAMIS", kamis_full, "price"))
 
-        # 각 소스별 결측 분석 + 보간
         for source_name, df, value_col in source_checks:
             missing_before = df[value_col].isna().sum()
             missing_rate = missing_before / total_months * 100
 
-            # 연속 결측 3개월 이상 탐지
             consec_gaps = find_consecutive_missing(df[value_col], threshold=3)
 
-            # 선형 보간 적용
             df[f"{value_col}_interpolated"] = df[value_col].interpolate(method="linear")
             missing_after = df[f"{value_col}_interpolated"].isna().sum()
 
-            # 상태 판정
             if missing_rate >= 10:
                 status = "❌ 제외 대상"
                 excluded_items.append({
@@ -205,9 +181,8 @@ def check_missing_values():
                 "status": status,
             })
 
-        print()  # 품목 간 빈 줄
+        print()
 
-    # 요약
     print(f"  {'='*60}")
     print(f"  📋 결측치 처리 요약")
     print(f"  {'='*60}")
@@ -235,7 +210,6 @@ def check_missing_values():
     else:
         print(f"\n  ✅ 연속 결측 3개월 이상 구간 없음")
 
-    # 저장
     report_path = PROCESSED_DIR / "missing_value_report.csv"
     report_df.to_csv(report_path, index=False, encoding="utf-8-sig")
     print(f"\n  💾 저장: {report_path}")

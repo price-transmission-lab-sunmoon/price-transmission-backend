@@ -6,7 +6,7 @@ import logging
 import sys
 from contextlib import asynccontextmanager
 
-# Windows cp949 환경에서 UTF-8 출력 강제 — pipeline 스크립트의 유니코드 문자 보호
+# Windows cp949 환경에서 UTF-8 출력 강제
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 if hasattr(sys.stderr, "reconfigure"):
@@ -31,10 +31,9 @@ from app.core.logging import setup_logging
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """애플리케이션 수명 주기 — 부팅 sanity check (frame_spec §5).
+    """부팅 시 DB/Redis 연결 확인 후 스케줄러 기동.
 
-    - development: DB/Redis 실패 시 WARN 후 기동 (더미 응답 시나리오 지원)
-    - production:  DB/Redis 실패 시 CFG-CORE-001 FATAL, 기동 중단
+    development 환경에서는 연결 실패 시 경고만 출력하고 계속 기동한다.
     """
     setup_logging(settings.log_level)
     logger = logging.getLogger("app")
@@ -98,7 +97,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS (§8.10)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allowed_origins.split(","),
@@ -107,10 +105,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 전역 예외 핸들러 (§8.4)
 app.add_exception_handler(APIError, api_error_handler)
 app.add_exception_handler(RequestValidationError, validation_error_handler)
 app.add_exception_handler(Exception, internal_error_handler)
 
-# 라우터 등록 (prefix="/api/v1", §8.3)
 app.include_router(router)

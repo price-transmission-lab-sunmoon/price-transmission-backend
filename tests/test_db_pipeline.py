@@ -1,14 +1,4 @@
-"""DB-PIPELINE 적재 로직 단위/통합 테스트 — feature_spec_DB-PIPELINE_v2 §7 완료 기준 검증.
-
-테스트 전략:
-- Phase 2~3: 샘플 CSV 픽스처 경유, AsyncMock 세션으로 UPSERT SQL 호출 확인
-- 타입 변환: DB-TYPE-001 FATAL (period.day != 1), DB-ARR-002 WARN (bp_dates 파싱 실패)
-- 트랜잭션 롤백: Phase 적재 중 예외 발생 시 rollback + DB-TX-001 재발생 확인
-- pipeline_runs: create/update/append 기본 호출 확인
-- runner: Phase 실패 시 status='failed' 기록 후 즉시 중단
-
-실 DB 없이 실행 가능하도록 AsyncMock 세션 사용.
-"""
+"""DB-PIPELINE 적재 로직 단위/통합 테스트 — AsyncMock 세션으로 실 DB 없이 실행."""
 from __future__ import annotations
 
 import os
@@ -79,7 +69,6 @@ def test_validate_period_day_fail():
 @pytest.mark.asyncio
 async def test_phase2_loads_csv(tmp_path):
     """샘플 CSV 경유 UPSERT SQL 실행 확인."""
-    # 픽스처 CSV를 tmp_path 에 복사하여 pipeline_data_root 로 사용
     phase2_dir = tmp_path / "phase2"
     phase2_dir.mkdir()
     src = _FIXTURE_DIR / "phase2_sample.csv"
@@ -142,7 +131,7 @@ def test_phase6_bp_dates_parse_ok():
 
 
 def test_phase6_bp_dates_parse_warn_on_failure():
-    """형식 불일치 시 DB-ARR-002 WARN → None 반환 (FATAL 아님)."""
+    """형식 불일치 시 DB-ARR-002 WARN → None 반환."""
     from app.db.loader.phase6 import _parse_bp_dates
     result = _parse_bp_dates(["invalid-date"], "wheat", "D_prime")
     assert result is None  # WARN 후 NULL 적재
@@ -155,13 +144,14 @@ def test_phase6_bp_dates_empty():
 
 
 def test_period_day_not_1_is_fatal():
-    """period.day != 1 주입 시 DB-TYPE-001 FATAL (§7 완료 기준)."""
+    """period.day != 1 주입 시 DB-TYPE-001 FATAL."""
     with pytest.raises(DBError) as exc_info:
         validate_period_day(date(2026, 3, 15), "stationarity_results")
     assert exc_info.value.code == "DB-TYPE-001"
     assert "월초" in exc_info.value.message
 
 
+# TODO: 실 DB 연결 환경에서 전 Phase 적재 후 row 수 검증하는 통합 테스트 추가 검토
 @pytest.mark.asyncio
 async def test_runner_marks_failed_on_phase2_error():
     """Phase 2 실패 시 pipeline_runs.status='failed' 기록 후 즉시 종료."""

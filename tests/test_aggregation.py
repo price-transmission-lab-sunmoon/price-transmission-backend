@@ -1,8 +1,4 @@
-"""app.services.aggregation 단위 테스트 — granularity 집계 + 이상 밀도.
-
-stream/raw_prices 중복 제거 시 동작 보존을 고정하기 위한 특성화 테스트.
-실 DB 불필요 (순수 함수).
-"""
+"""app.services.aggregation 단위 테스트 — granularity 집계 + 이상 밀도."""
 from __future__ import annotations
 
 from datetime import date

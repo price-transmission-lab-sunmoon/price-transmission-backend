@@ -1,27 +1,4 @@
-"""
-축 3 -- 통계-ML 일관성 AUC (보조 지표)
-=======================================
-역할:
-  Phase 7 통계 탐지 결과(stat_detected)를 pseudo-label로,
-  ML 이상 점수를 스코어로 삼아 ROC AUC를 산출한다.
-  이상적 AUC 구간: 0.70~0.90 (독립성과 일관성 공존).
-
-  score 방향 통일: 3종 모델 전부 부호 반전하여 "높을수록 이상"으로 변환.
-  앙상블 스코어: 3종 모델의 정규화된 이상 점수 평균 (연속형).
-
-변경 이력:
-  v2 (2026-05-18):
-    - 앙상블 스코어를 이산형(ml_consensus_count 0~3) → 연속형(Min-Max 정규화 평균)으로 변경
-    - ROC curve FPR/TPR 배열 반환 추가
-
-입력 파일:
-  - data/processed/phase7_ml/predictions/{cid}_{seg}_ml_predictions.csv
-  - data/processed/phase7_ml/cross_validation/{cid}_{seg}_cross_val.csv
-
-출력: AUC 결과 dict
-
-위치: tests/phase7_ml/test_axis3_auc.py
-"""
+"""축 3 — 통계-ML 일관성 AUC(보조 지표) 산출."""
 
 import sys
 import os
@@ -39,25 +16,14 @@ from eval_common import (
 
 
 def compute_auc_segment(pred_df, cv_df):
-    """
-    단일 품목x구간에 대해 모델별 + 앙상블 AUC를 산출한다.
-    ROC curve (FPR/TPR 배열)도 함께 반환한다.
-
-    pseudo-label: stat_detected (통계 탐지 여부)
-    score: ML 이상 점수 (부호 반전하여 높을수록 이상으로 통일)
-
-    Returns:
-        dict {auc_if, auc_lof, auc_svm, auc_ensemble, roc_curves}
-        roc_curves: {model_name: [(fpr, tpr), ...]} — 대시보드 ROC Curve용
-    """
-    # date 기준 merge
+    """단일 품목x구간의 모델별 + 앙상블 AUC와 ROC curve를 산출한다."""
     merged = pred_df.merge(
         cv_df[["date", "stat_detected"]], on="date", how="inner"
     )
 
     y_true = merged["stat_detected"].astype(int).values
 
-    # pseudo-label에 양쪽 클래스가 모두 존재해야 AUC 산출 가능
+    # 양쪽 클래스가 모두 존재해야 AUC 산출 가능
     if len(np.unique(y_true)) < 2:
         return {
             "auc_if": np.nan, "auc_lof": np.nan,
@@ -65,14 +31,12 @@ def compute_auc_segment(pred_df, cv_df):
             "roc_curves": {},
         }
 
-    # 부호 반전: 3종 모델 전부 "높을수록 이상"으로 통일
+    # 부호 반전: "높을수록 이상"으로 통일
     scores_if = -merged["if_score"].values
     scores_lof = -merged["lof_score"].values
     scores_svm = -merged["svm_score"].values
 
-    # 앙상블 스코어: 연속형 (Min-Max 정규화 후 평균)
-    # 기존 ml_consensus_count(0~3 이산값)는 ROC 곡선이 계단형이 되어
-    # AUC가 과소 측정되므로, 3종 모델의 연속 점수를 결합한다.
+    # 앙상블: 3종 Min-Max 정규화 평균 (이산 count 대비 ROC 곡선이 연속형)
     def minmax_norm(arr):
         rng = arr.max() - arr.min()
         if rng == 0:
@@ -101,7 +65,6 @@ def compute_auc_segment(pred_df, cv_df):
 
 
 def interpret_auc(auc):
-    """AUC 값에 대한 해석을 반환한다."""
     if np.isnan(auc):
         return "산출 불가"
     if auc >= 0.95:
@@ -114,7 +77,6 @@ def interpret_auc(auc):
 
 
 def run_axis3(data_dir, ml_dir):
-    """전 20개 구간에 대해 AUC를 산출한다."""
     segments = get_ml_segments(data_dir)
     log_eval("축 3 (AUC) 시작")
 
@@ -135,7 +97,6 @@ def run_axis3(data_dir, ml_dir):
             f"SVM={auc['auc_svm']}, ensemble={auc['auc_ensemble']} ({interp})"
         )
 
-    # 전체 평균
     auc_df = pd.DataFrame(all_results)
     log_eval(
         f"축 3 완료. 평균 AUC: "

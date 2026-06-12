@@ -1,7 +1,4 @@
-"""패널 엔드포인트 서비스 — /detail, /stat-series, /stat-snapshot, /irf, /ml-map.
-
-api_spec_vN §패널 엔드포인트, feature_spec_API-PANEL 기준.
-"""
+"""패널 엔드포인트 서비스 — /detail, /stat-series, /stat-snapshot, /irf, /ml-map."""
 from __future__ import annotations
 
 from datetime import date
@@ -45,12 +42,12 @@ from app.schemas.timeseries import StatSeriesPoint, StatSeriesResponse
 
 
 def _parse_yyyymm(value: str, field: str) -> date:
-    """YYYY-MM → date. 패널 도메인 코드(API-MET-001) 고정."""
+    """YYYY-MM → date."""
     return parse_yyyymm(value, field, code="API-MET-001")
 
 
 async def _get_anomaly_or_404(db: AsyncSession, anomaly_id: int) -> AnomalyResult:
-    """anomaly_results 단건 조회. 미존재 시 API-ANO-001."""
+    """anomaly_results 단건 조회. 미존재 시 404."""
     ar = (await db.execute(
         select(AnomalyResult).where(AnomalyResult.id == anomaly_id)
     )).scalar_one_or_none()
@@ -92,7 +89,7 @@ async def _get_stat_at(
 
 
 async def get_detail(anomaly_id: int, db: AsyncSession) -> AnomalyDetailResponse:
-    """이상 항목 상세 — anomaly_results + 관련 테이블 통합."""
+    """이상 항목 상세 조회."""
     ar = await _get_anomaly_or_404(db, anomaly_id)
 
     stat = await _get_stat_at(db, ar.commodity_id, ar.segment_id, ar.period)
@@ -132,6 +129,7 @@ async def get_detail(anomaly_id: int, db: AsyncSession) -> AnomalyDetailResponse
     commodity_name = await _get_commodity_name(db, ar.commodity_id)
     segment_label = await _get_segment_label(db, ar.segment_id)
 
+    # ar에 transmission_rate 있으면 우선 사용, 없으면 stat 참조
     stat_metrics = StatMetrics(
         transmission_rate=_f(ar.transmission_rate) if ar.transmission_rate is not None else _f(stat.transmission_rate if stat else None),
         rolling_mean=_f(stat.rolling_mean) if stat else None,
@@ -166,7 +164,6 @@ async def get_detail(anomaly_id: int, db: AsyncSession) -> AnomalyDetailResponse
         bp_dates=[_period_str(d) for d in (bp.bp_dates or [])] if bp else [],
     )
 
-    # backend_reply_phase7ml_v2 §2.2 — *_anomaly 항상 boolean. None → False 강제.
     ml_summary = MLSummary(
         ml_vote=int(ar.ml_vote or 0),
         ml_detected=bool(ar.ml_detected),
@@ -181,7 +178,6 @@ async def get_detail(anomaly_id: int, db: AsyncSession) -> AnomalyDetailResponse
         svm_percentile=_f(ml.svm_percentile) if ml else None,
     )
 
-    # judgment_path — 5단계 판정 흐름 요약
     judgment_path = _build_judgment_path(ar, stat_metrics)
 
     return AnomalyDetailResponse(
@@ -202,7 +198,7 @@ async def get_detail(anomaly_id: int, db: AsyncSession) -> AnomalyDetailResponse
 
 
 def _build_judgment_path(ar: AnomalyResult, sm: StatMetrics) -> list[JudgmentStep]:
-    """판정 경로 5단계 — 통계 탐지·ML 합의·등급 결정 흐름."""
+    """판정 경로 5단계."""
     steps: list[JudgmentStep] = [
         JudgmentStep(
             step=1, label="통계 탐지",
@@ -249,7 +245,7 @@ async def get_stat_series(
     granularity: str,
     db: AsyncSession,
 ) -> StatSeriesResponse:
-    """지표별 인라인 시계열 — stat_timeseries 조회."""
+    """지표별 시계열 — stat_timeseries 조회."""
     if metric in ("iqr", "asymmetry"):
         raise APIError(
             "API-MET-002",
@@ -277,11 +273,10 @@ async def get_stat_series(
 
     ar = await _get_anomaly_or_404(db, anomaly_id)
 
-    # 기본 범위: anomaly period 기준 ±24개월
+    # 기본 범위: anomaly period 기준 전 24개월 / 후 12개월
     if from_:
         period_from = _parse_yyyymm(from_, "from")
     else:
-        # 24개월 전
         y, m = ar.period.year, ar.period.month - 24
         while m <= 0:
             m += 12
@@ -312,7 +307,6 @@ async def get_stat_series(
         )).order_by(StatTimeseries.period)
     )).scalars().all()
 
-    # bp_dates 조회 (metric=breakpoints 처리용)
     bp_set: set[date] = set()
     if metric == "breakpoints":
         bp = (await db.execute(
@@ -372,7 +366,6 @@ async def get_stat_snapshot_iqr(
             context={"anomaly_id": anomaly_id, "period": _period_str(ar.period)},
             http_status=500, public_code="PIPELINE_DATA_MISSING",
         )
-    # median 추정: rolling_mean 사용 (정밀 median은 별도 산출 필요)
     return StatSnapshotIQRResponse(
         anomaly_id=ar.id,
         metric="iqr",
@@ -399,7 +392,7 @@ async def get_stat_snapshot_asymmetry(
         ))
     )).scalar_one_or_none()
 
-    # 상승/하락 표본: stat_timeseries의 transmission_rate에서 upstream 방향별 분리
+    # upstream_pct 부호로 상승/하락 분리
     ts_rows = (await db.execute(
         select(StatTimeseries).where(and_(
             StatTimeseries.commodity_id == ar.commodity_id,
@@ -438,7 +431,6 @@ async def get_irf(
     """IRF 곡선 — 전체 기간 + 옵션 시 하위 기간별."""
     ar = await _get_anomaly_or_404(db, anomaly_id)
 
-    # 전체 기간 IRF (subperiod_id IS NULL)
     full_rows = (await db.execute(
         select(IRFData).where(and_(
             IRFData.commodity_id == ar.commodity_id,
@@ -483,7 +475,6 @@ async def get_irf(
         ))
 
     if include_subperiods:
-        # subperiods join irf_data
         subps = (await db.execute(
             select(Subperiod).where(and_(
                 Subperiod.commodity_id == ar.commodity_id,
@@ -543,7 +534,7 @@ async def get_ml_map(
     projection_method: str,
     db: AsyncSession,
 ) -> MLMapResponse:
-    """ML 결과맵 2D 투영 — ml_projections 조회 (OI-15 보류 시 빈 응답)."""
+    """ML 결과맵 2D 투영 — ml_projections 조회. 데이터 없으면 빈 응답."""
     ar = await _get_anomaly_or_404(db, anomaly_id)
     model_name = _MODEL_MAP.get(model, model)
 
@@ -557,7 +548,6 @@ async def get_ml_map(
     )).scalars().all()
 
     if not rows:
-        # ML 결과 미산출 — OI-15 보류 상태, 빈 응답 반환 (404 대신 빈 points)
         return MLMapResponse(
             anomaly_id=ar.id,
             commodity_id=ar.commodity_id,

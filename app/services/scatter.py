@@ -1,7 +1,4 @@
-"""산점도 비즈니스 로직 (feature_spec_API-STR_v5 §1.2).
-
-엔드포인트: GET /commodities/{id}/scatter
-"""
+"""산점도 비즈니스 로직 — GET /commodities/{id}/scatter."""
 from __future__ import annotations
 
 from datetime import date
@@ -34,15 +31,7 @@ async def get_scatter(
     until_str: str | None,
     grade_str: str = "high,medium",
 ) -> ScatterResponse:
-    """전달 구조 산점도 반환 (feature_spec_API-STR_v5 §1.2).
-
-    - segment 검증 (API-SEG-001)
-    - until 검증 (API-STR-005): analysis_start ≤ until ≤ analysis_end
-    - warmup 전용 체크 (API-STR-001)
-    - baselines: subperiod_id IS NULL (D-15 전체 기간 기준선)
-    - 항상 월 단위 (granularity 없음)
-    """
-    # 1. segment 검증 (API-SEG-001)
+    """전달 구조 산점도 반환."""
     if segment_id not in commodity_segments:
         raise APIError(
             "API-SEG-001",
@@ -56,14 +45,12 @@ async def get_scatter(
             public_code="INVALID_SEGMENT",
         )
 
-    # 2. 날짜 파싱 및 클램핑
     requested_from = _parse_yyyymm(from_str, "from") if from_str else analysis_start
     requested_to = _parse_yyyymm(to_str, "to") if to_str else analysis_end
     actual_from, actual_to = _clamp_range(
         requested_from, requested_to, analysis_start, analysis_end, commodity_id
     )
 
-    # 3. until 검증 (API-STR-005)
     until: date | None = None
     if until_str:
         until = _parse_yyyymm(until_str, "until")
@@ -81,7 +68,6 @@ async def get_scatter(
                 public_code="UNTIL_EXCEEDS_TO",
             )
 
-    # 4. stat_timeseries 조회 (upstream_pct, downstream_pct)
     try:
         ts_result = await db.execute(
             select(StatTimeseries)
@@ -105,7 +91,6 @@ async def get_scatter(
             public_code="INTERNAL_ERROR",
         ) from e
 
-    # 5. warmup 전용 체크 (API-STR-001)
     if ts_rows and all(r.in_warmup_period for r in ts_rows):
         raise APIError(
             "API-STR-001",
@@ -120,7 +105,6 @@ async def get_scatter(
             public_code="WARMUP_PERIOD_ONLY",
         )
 
-    # 6. anomaly_results 조회 (scatter용 — 색상/마커 목적, grade 필터 적용)
     grade_filter = [g.strip() for g in grade_str.split(",") if g.strip()]
     try:
         anomaly_result = await db.execute(
@@ -145,10 +129,8 @@ async def get_scatter(
             public_code="INTERNAL_ERROR",
         ) from e
 
-    # (period, segment_id) → anomaly row 인덱스
     anomaly_map: dict[date, AnomalyResult] = {ar.period: ar for ar in anomaly_rows}
 
-    # 7. baselines 조회 (subperiod_id IS NULL — D-15 전체 기간 기준선)
     try:
         baseline_result = await db.execute(
             select(Baseline)
@@ -171,7 +153,6 @@ async def get_scatter(
             public_code="INTERNAL_ERROR",
         ) from e
 
-    # 8. segments 조회 (upstream_label, downstream_label)
     try:
         seg_result = await db.execute(
             select(Segment).where(Segment.segment_id == segment_id)
@@ -189,7 +170,6 @@ async def get_scatter(
     upstream_label = seg_row.upstream_label if seg_row else segment_id
     downstream_label = seg_row.downstream_label if seg_row else segment_id
 
-    # 9. 산점도 포인트 조립
     points: list[ScatterPoint] = []
     for row in ts_rows:
         ar = anomaly_map.get(row.period)
@@ -205,7 +185,6 @@ async def get_scatter(
             )
         )
 
-    # 10. baseline DTO
     baseline = ScatterBaseline(
         transmission_elasticity=_safe_float(
             baseline_row.transmission_elasticity, "baselines", "transmission_elasticity"

@@ -1,10 +1,6 @@
 """0008_ml_score_projection_tables
 
-Phase 7-ML 테이블 추가: ml_scores, ml_projections.
-db_schema_v5 §ml_scores, §ml_projections 기준.
-
-ORM은 app/db/models/anomaly.py에 이미 정의되어 있으나 마이그레이션 누락 상태.
-feat/be-api-panel 통합 시 추가.
+ml_scores, ml_projections 테이블 추가 (Phase 7-ML).
 
 Revision ID: 0008
 Revises: 0007

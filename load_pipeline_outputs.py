@@ -1,24 +1,17 @@
 """Phase 2~7-ML 통합 DB 적재 스크립트.
 
-load_phase7.py 가 stat_timeseries, anomaly_results 만 적재한다.
-이 스크립트는 그 외 Phase 2~6 + Phase 7-ML 테이블을 추가로 적재한다.
-
-적재 대상 테이블:
-  - stationarity_results       ← processed/phase2/stationarity_results.csv
-  - cointegration_results      ← processed/phase3/cointegration_results.csv
-  - baselines (전체 기간만)    ← processed/phase4/baseline/{cid}_{seg}_baseline.json
-  - model_params (전체 기간만) ← processed/phase4/model_params/{cid}_{seg}_model.json
-  - irf_data (전체 기간만)     ← processed/phase4/irf/{cid}_{seg}_irf.csv
-  - granger_results            ← processed/phase5/granger_results.csv
-  - subperiods                 ← processed/phase6/breakpoints/{cid}_{seg}_breakpoints.json
-  - breakpoints                ← processed/phase6/breakpoints/{cid}_{seg}_breakpoints.json
-  - asymmetry_results          ← processed/phase7/pattern2/{cid}_{seg}_pattern2_asymmetry.csv
-  - ml_scores                  ← processed/phase7_ml/predictions/{cid}_{seg}_ml_predictions.csv
-                                  + percentile 산출 (segment 단위, rank ascending=False)
-  - ml_projections             ← processed/phase7_ml/features/{cid}_{seg}_features.csv (+ PCA)
-                                  (cid, seg, period) × 3 model_name = 3행
-  - raw_prices                 ← processed/merged/{cid}.csv (+ 2020=100 지수 산출)
-  - data_freshness 갱신        ← baseline.json의 estimation_period_end (data_up_to)
+입력 경로:
+  processed/phase2/stationarity_results.csv
+  processed/phase3/cointegration_results.csv
+  processed/phase4/baseline/{cid}_{seg}_baseline.json
+  processed/phase4/model_params/{cid}_{seg}_model.json
+  processed/phase4/irf/{cid}_{seg}_irf.csv
+  processed/phase5/granger_results.csv
+  processed/phase6/breakpoints/{cid}_{seg}_breakpoints.json
+  processed/phase7/pattern2/{cid}_{seg}_pattern2_asymmetry.csv
+  processed/phase7_ml/predictions/{cid}_{seg}_ml_predictions.csv
+  processed/phase7_ml/features/{cid}_{seg}_features.csv
+  processed/merged/{cid}.csv
 
 실행: python load_pipeline_outputs.py
 """
@@ -56,7 +49,7 @@ DB_URL = (
 
 
 def F(val):
-    """float NaN/Inf → None"""
+    """float NaN/Inf → None."""
     if val is None:
         return None
     try:
@@ -69,14 +62,14 @@ def F(val):
 
 
 def I(val):
-    """int → None safe"""
+    """int → None safe."""
     if val is None or (isinstance(val, float) and pd.isna(val)):
         return None
     return int(val)
 
 
 def B(val):
-    """bool → None safe"""
+    """bool → None safe."""
     if val is None or (isinstance(val, float) and pd.isna(val)):
         return None
     if isinstance(val, str):
@@ -85,7 +78,7 @@ def B(val):
 
 
 def BF(val):
-    """bool → False fallback (회신 v2 §2.2: *_anomaly null 금지)."""
+    """bool → False fallback (*_anomaly 컬럼은 null 불허)."""
     res = B(val)
     return False if res is None else res
 
@@ -97,7 +90,7 @@ def S(val):
 
 
 def yyyymm_to_date(s):
-    """'YYYY-MM' → date(yyyy, mm, 1). 'YYYY-MM-DD'도 허용."""
+    """'YYYY-MM' 또는 'YYYY-MM-DD' → date 객체."""
     if s is None or (isinstance(s, float) and pd.isna(s)):
         return None
     s = str(s).strip()
@@ -124,6 +117,7 @@ def parse_bp_dates(val) -> list | None:
 
 
 async def latest_pipeline_run_id(conn: asyncpg.Connection) -> int | None:
+    """pipeline_runs에서 최신 run id 조회."""
     return await conn.fetchval(
         "SELECT id FROM pipeline_runs ORDER BY id DESC LIMIT 1"
     )
@@ -150,7 +144,7 @@ async def load_stationarity(conn, run_id):
             F(r.get("diff_kpss_stat")), F(r.get("diff_kpss_pvalue")),
             S(r.get("diff_judgment")),
             I(r["integration_order"]) or 0,
-            False,  # i2_flag (CSV에 없음, 기본 False)
+            False,  # i2_flag: CSV에 없으므로 기본 False
             run_id,
         )
         for _, r in df.iterrows()
@@ -183,7 +177,6 @@ async def load_cointegration(conn, run_id):
     await conn.execute("DELETE FROM cointegration_results")
     rows = []
     for _, r in df.iterrows():
-        # coint_tested 추정: trace_stat·eigen_stat 존재 시 True
         coint_tested = (
             r.get("trace_stat_r0") is not None
             and not pd.isna(r.get("trace_stat_r0"))
@@ -191,15 +184,15 @@ async def load_cointegration(conn, run_id):
         rows.append((
             S(r["commodity_id"]), S(r["segment"]),
             S(r.get("upstream")) or "", S(r.get("downstream")) or "",
-            None, None, None,  # integration_orders는 stationarity에서 조회
+            None, None, None,
             bool(coint_tested),
-            F(r.get("trace_stat_r0")), None,  # trace_pvalue (CSV에 없음)
-            F(r.get("eigen_stat_r0")), None,  # maxeig_pvalue
-            None,  # coint_rank (Johansen 결과에서 추출 필요, 보류)
+            F(r.get("trace_stat_r0")), None,
+            F(r.get("eigen_stat_r0")), None,
+            None,
             B(r.get("cointegrated")),
-            False,  # i2_flag
+            False,
             S(r.get("model_selected")),
-            None,  # granger_direction (phase5에서 채움 가능)
+            None,
             run_id,
         ))
     await conn.executemany(
@@ -235,7 +228,7 @@ async def load_baselines(conn, run_id):
             continue
         rows.append((
             S(d["commodity_id"]), S(d["segment"]),
-            None,  # subperiod_id NULL = 전체 기간
+            None,  # subperiod_id NULL → 전체 기간
             I(d["normal_transmission_lag"]),
             F(d["transmission_elasticity"]),
             warmup_end, S(d["model_type"]),
@@ -263,7 +256,6 @@ async def load_model_params(conn, run_id):
     model_dir = PHASE4_DIR / "model_params"
     files = sorted(model_dir.glob("*_model.json"))
     await conn.execute("DELETE FROM model_params WHERE subperiod_id IS NULL")
-    # baseline JSON의 estimation_period_start/end를 참조
     baseline_lookup = {}
     for f in (PHASE4_DIR / "baseline").glob("*_baseline.json"):
         d = json.loads(f.read_text(encoding="utf-8"))
@@ -284,7 +276,7 @@ async def load_model_params(conn, run_id):
             yyyymm_to_date(bl["estimation_period_end"]),
             B(d.get("cointegrated")),
             I(d.get("det_order")), I(d.get("coint_rank")),
-            None, None, None,  # aic, bic, log_likelihood — CSV/JSON에 없음
+            None, None, None,  # aic, bic, log_likelihood: JSON에 없음
             run_id,
         ))
     await conn.executemany(
@@ -312,7 +304,7 @@ async def load_irf_data(conn, run_id):
     rows = []
     for f in files:
         # 파일명: {cid}_{seg}_irf.csv
-        stem = f.stem  # e.g. "wheat_A_irf" or "wheat_D_prime_irf"
+        stem = f.stem
         m = re.match(r"^(.+?)_([A-Za-z_]+?)_irf$", stem)
         if not m:
             continue
@@ -498,12 +490,7 @@ async def load_asymmetry(conn, run_id):
 
 
 async def load_ml_scores(conn, run_id):
-    """predictions CSV → ml_scores + percentile 산출.
-
-    회신 v2 §1.3: percentile = rank(pct=True, ascending=False) * 100, segment 단위.
-    3종 score 모두 'lower = more anomalous' → 동일 방향. 높을수록 이상.
-    회신 v2 §2.2: *_anomaly NaN → False 강제 (BF 사용).
-    """
+    """predictions CSV → ml_scores 적재. segment 단위 percentile 산출 포함."""
     pred_dir = PHASE7_ML_DIR / "predictions"
     files = sorted(pred_dir.glob("*_ml_predictions.csv"))
     await conn.execute("DELETE FROM ml_scores")
@@ -512,7 +499,6 @@ async def load_ml_scores(conn, run_id):
         print("  SKIP ml_scores — predictions 폴더 비어있음")
         return 0
 
-    # 전 predictions 통합 후 segment 단위 percentile 산출
     dfs = []
     for f in files:
         d = pd.read_csv(f, parse_dates=["date"])
@@ -567,7 +553,6 @@ _RAW_VALUE_COLS = [
     "intl_price_usd", "intl_price_krw", "import_price_usd",
     "exchange_rate", "ppi", "cpi", "wholesale_price",
 ]
-# 2020=100 지수가 산출되는 컬럼들 (raw_prices 테이블의 *_idx 컬럼과 매핑)
 _INDEX_COLS = {
     "intl_price_krw":  "intl_price_krw_idx",
     "import_price_usd": "import_price_idx",
@@ -578,7 +563,7 @@ _INDEX_COLS = {
 
 
 def _compute_2020_index(df: pd.DataFrame, value_col: str) -> pd.Series:
-    """2020년 1~12월 평균=100 기준 지수 산출. 2020 데이터 없으면 NaN."""
+    """2020년 월평균=100 기준 지수. 2020 데이터 없으면 NaN 반환."""
     mask_2020 = pd.to_datetime(df["date"]).dt.year == 2020
     base = df.loc[mask_2020, value_col].mean()
     if pd.isna(base) or base == 0:
@@ -597,14 +582,13 @@ async def load_raw_prices(conn, run_id):
     total = 0
     for f in files:
         df = pd.read_csv(f, encoding="utf-8-sig", parse_dates=["date"])
-        # 2020=100 지수 산출 (각 소스별)
         for val_col, idx_col in _INDEX_COLS.items():
             if val_col in df.columns:
                 df[idx_col] = _compute_2020_index(df, val_col)
             else:
                 df[idx_col] = math.nan
 
-        # 누락된 source 컬럼 보충 (예: 3구간 품목 wholesale_price 없음)
+        # 도매가 없는 품목 등 누락 컬럼 보충
         for c in _RAW_VALUE_COLS:
             if c not in df.columns:
                 df[c] = math.nan
@@ -644,7 +628,7 @@ async def load_raw_prices(conn, run_id):
 
 
 async def refresh_data_freshness(conn, run_id):
-    """baseline.json의 estimation_period_end 중 최대값을 data_freshness.data_up_to로 갱신."""
+    """baseline.json estimation_period_end 최대값 → data_freshness.data_up_to 갱신."""
     max_end = None
     for f in (PHASE4_DIR / "baseline").glob("*_baseline.json"):
         d = json.loads(f.read_text(encoding="utf-8"))
@@ -814,6 +798,7 @@ async def load_ml_projections(conn, run_id):
 
 
 async def main():
+    # TODO: 특정 Phase/테이블만 선택 재적재하는 --phase 인자 지원 검토
     print("=" * 60)
     print("  Phase 2~7-ML 통합 DB 적재")
     print("=" * 60)

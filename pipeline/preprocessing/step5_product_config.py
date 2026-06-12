@@ -1,10 +1,4 @@
-"""
-Phase 0 전처리 — Step 5: PRODUCT_CONFIG 생성
-==============================================
-품목별 분석 구간, 도매가 유무, 공통 기간 등 메타데이터를 생성합니다.
-이후 Phase 1~7에서 품목별 분기 로직에 사용됩니다.
-실행: python src/preprocessing/step5_product_config.py
-"""
+"""Step 5: 품목별 분석 메타데이터(공통 기간·구간 페어) → product_config.json 생성."""
 
 import json
 import pandas as pd
@@ -20,12 +14,10 @@ def generate_product_config():
     print("  Step 5: PRODUCT_CONFIG 생성")
     print("=" * 60)
 
-    # 매핑 파일
     mapping_path = PROJECT_ROOT / "config" / "commodity_mapping.json"
     with open(mapping_path, "r", encoding="utf-8") as f:
         mapping = json.load(f)
 
-    # 공통 기간
     cp = pd.read_csv(
         PROCESSED_DIR / "common_periods.csv",
         parse_dates=["common_start", "common_end"]
@@ -38,7 +30,6 @@ def generate_product_config():
         name_kr = commodity["name_kr"]
         has_wholesale = commodity.get("has_wholesale", False)
 
-        # 공통 기간
         cp_row = cp[cp["commodity_id"] == cid]
         if cp_row.empty or cp_row.iloc[0]["common_months"] == 0:
             continue
@@ -47,13 +38,8 @@ def generate_product_config():
         common_end = cp_row.iloc[0]["common_end"].strftime("%Y-%m")
         common_months = int(cp_row.iloc[0]["common_months"])
 
-        # 분석 구간
-        if has_wholesale:
-            segments = ["A", "B", "C", "D"]
-        else:
-            segments = ["A", "B", "D_prime"]
+        segments = ["A", "B", "C", "D"] if has_wholesale else ["A", "B", "D_prime"]
 
-        # PPI/CPI 통계표 코드
         ppi_info = commodity.get("sources", {}).get("ecos_ppi", {})
         cpi_info = commodity.get("sources", {}).get("ecos_cpi", {})
 
@@ -78,7 +64,6 @@ def generate_product_config():
             "segment_pairs": {},
         }
 
-        # 구간별 상류-하류 페어 정의
         pairs = {
             "A": ("intl_price_krw", "import_price_usd"),
             "B": ("import_price_usd", "ppi"),
@@ -91,13 +76,11 @@ def generate_product_config():
 
         config[cid]["segment_pairs"] = pairs
 
-    # 저장 (JSON)
     config_path = PROCESSED_DIR / "product_config.json"
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(config, f, ensure_ascii=False, indent=2)
     print(f"\n  💾 저장: {config_path}")
 
-    # 출력
     print(f"\n  {'품목':<12} {'구간':<18} {'기간':<25} {'월수':>5} {'도매가'}")
     print(f"  {'─'*75}")
 
@@ -107,26 +90,12 @@ def generate_product_config():
         wholesale_str = "✅" if cfg["has_wholesale"] else "—"
         print(f"  {cfg['name_kr']:<12} {segments_str:<18} {period_str:<25} {cfg['common_months']:>5} {wholesale_str}")
 
-    # 그룹별 요약
     b2b = [cid for cid, cfg in config.items() if not cfg["has_wholesale"]]
     wholesale = [cid for cid, cfg in config.items() if cfg["has_wholesale"]]
 
     print(f"\n  📋 품목 그룹 요약:")
     print(f"    B2B 직납형 (A→B→D′): {len(b2b)}개 — {', '.join(b2b)}")
     print(f"    도매 경유  (A→B→C→D): {len(wholesale)}개 — {', '.join(wholesale)}")
-
-    # 구간별 페어 출력
-    print(f"\n  📋 구간별 상류→하류 변수 매핑:")
-    sample = list(config.values())[0]
-    for seg, (up, down) in sample["segment_pairs"].items():
-        print(f"    구간 {seg}: {up} → {down}")
-
-    if wholesale:
-        sample_w = config[wholesale[0]]
-        for seg in ["C", "D"]:
-            if seg in sample_w["segment_pairs"]:
-                up, down = sample_w["segment_pairs"][seg]
-                print(f"    구간 {seg}: {up} → {down}  (도매 경유 품목만)")
 
     return config
 

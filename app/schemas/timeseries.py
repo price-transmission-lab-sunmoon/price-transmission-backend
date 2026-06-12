@@ -1,4 +1,4 @@
-"""Pydantic DTO — 시계열 응답 envelope + /stream, /scatter, /raw-prices, /stat-series (api_spec_vN §시계열 엔드포인트)."""
+"""Pydantic DTO — 시계열 응답 envelope + stream, scatter, raw-prices, stat-series 응답."""
 from __future__ import annotations
 
 from datetime import date
@@ -164,10 +164,10 @@ class AnomalyDensityPoint(BaseModel):
 
 
 class StreamMinimapResponse(StreamResponse):
-    """스트림 미니맵 응답 — StreamResponse + anomaly_density (api_spec_vN §stream/minimap)."""
+    """스트림 미니맵 — StreamResponse + anomaly_density."""
     anomaly_density: list[AnomalyDensityPoint] = []
 
 
 class RawPricesMinimapResponse(RawPricesResponse):
-    """원시 시계열 미니맵 응답 — RawPricesResponse + anomaly_density (api_spec_vN §raw-prices/minimap)."""
+    """원시 시계열 미니맵 — RawPricesResponse + anomaly_density."""
     anomaly_density: list[AnomalyDensityPoint] = []

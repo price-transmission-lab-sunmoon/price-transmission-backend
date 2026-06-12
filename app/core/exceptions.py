@@ -1,4 +1,4 @@
-"""예외 클래스 계층 + 에러 체이닝 — exception_spec_vN §부록 A + exception_design_vN §2 구현."""
+"""예외 클래스 계층 + 에러 체이닝 헬퍼."""
 from __future__ import annotations
 
 import logging
@@ -39,10 +39,7 @@ class APIError(ProjectError):
 
 
 class PipelineError(ProjectError):
-    """파이프라인 단계 예외 (PL-*). phase 속성으로 어느 Phase에서 발생했는지 식별.
-
-    feat/pipeline-phase* 브랜치에서 실제 파이프라인 코드가 추가될 때 사용한다.
-    """
+    """파이프라인 단계 예외 (PL-*). phase 속성으로 발생 단계를 식별."""
     def __init__(self, code: str, message: str, context: dict | None = None, phase: str = ""):
         super().__init__(code, message, context)
         self.phase = phase
@@ -76,7 +73,7 @@ class ExternalAPIError(ProjectError):
 
 
 def _format_chain(chain: list[Exception]) -> str:
-    """예외 체인을 ORIGIN → 현재 순으로 포맷팅 (exception_design_vN §2.2)."""
+    """예외 체인을 ORIGIN → 현재 순으로 포맷팅."""
     lines: list[str] = []
     for i, exc in enumerate(chain):
         if isinstance(exc, ProjectError):
@@ -96,7 +93,7 @@ def _format_chain(chain: list[Exception]) -> str:
 
 
 def trace_error_chain(exc: Exception) -> dict:
-    """예외 체인을 역추적하여 ORIGIN·전파 경로·포맷 문자열 반환 (exception_design_vN §2.2).
+    """예외 체인을 역추적하여 ORIGIN·전파 경로·포맷 문자열 반환.
 
     Returns:
         {
@@ -159,8 +156,7 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
 async def internal_error_handler(request: Request, exc: Exception) -> JSONResponse:
     """DBError / PipelineError / ParseError / ExternalAPIError / 기타 → 500 / INTERNAL_ERROR.
 
-    ORIGIN 코드를 보존하여 로깅하고 사용자에게는 INTERNAL_ERROR만 노출
-    (exception_spec_vN §4 API-INT-001, exception_design_vN §2.4).
+    ORIGIN 코드를 보존하여 로깅하고, 사용자에게는 INTERNAL_ERROR만 노출한다.
     """
     result = trace_error_chain(exc)
     origin = result["origin"]

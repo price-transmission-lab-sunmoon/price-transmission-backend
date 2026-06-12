@@ -1,25 +1,7 @@
-"""
-ML 평가 대시보드 생성 (generate_dashboard.py)
-==============================================
-역할:
-  5축 평가 결과 CSV + run_meta.json을 읽어
-  논문 발표용 시각화 대시보드 HTML 파일을 생성한다.
-
-설계 원칙 (교수님 피드백 반영):
-  1. 차트 스타일: 꺾은선(line) 위주 — 논문 정형 패턴
-  2. 지표 추가: AUC, MAE, MSE 포함
-  3. 줄임말 풀어쓰기: IF→Isolation Forest 등
-  4. 표 하이라이트: 최고/최저값 명확 강조
+"""5축 평가 결과 CSV + run_meta.json을 읽어 대시보드 HTML을 생성한다.
 
 입력: tests/phase7_ml/results/{run_id}/ 아래 CSV 5개 + run_meta.json
 출력: 같은 디렉토리에 dashboard.html 생성
-
-위치: tests/phase7_ml/generate_dashboard.py
-
-실행 방법:
-  python tests/phase7_ml/generate_dashboard.py
-  python tests/phase7_ml/generate_dashboard.py --run run_20260513_143022
-  python tests/phase7_ml/generate_dashboard.py --compare run_20260513_143022 run_20260515_221700
 """
 
 import sys
@@ -31,9 +13,6 @@ import numpy as np
 from pathlib import Path
 
 
-# ---------------------------------------------------------------------------
-# 데이터 로딩
-# ---------------------------------------------------------------------------
 def load_run_data(run_dir):
     run_dir = Path(run_dir)
     data = {}
@@ -77,9 +56,6 @@ def df_to_js_array(df, columns, null_val="null"):
     return "[" + ",\n  ".join(rows) + "]"
 
 
-# ---------------------------------------------------------------------------
-# 비교 배너
-# ---------------------------------------------------------------------------
 def build_compare_banner(meta_current, meta_previous):
     if not meta_previous:
         return ""
@@ -100,9 +76,6 @@ def build_compare_banner(meta_current, meta_previous):
     return f'<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:32px"><div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;font-family:\'JetBrains Mono\',monospace">vs {meta_previous.get("run_id","?")} — {meta_previous.get("memo","")}</div><div style="display:grid;grid-template-columns:repeat(5,1fr);gap:16px">{cells}</div></div>'
 
 
-# ---------------------------------------------------------------------------
-# HTML 생성
-# ---------------------------------------------------------------------------
 def generate_html(data, compare_data=None):
     meta = data["meta"]
     run_id = meta.get("run_id", "unknown")
@@ -117,7 +90,6 @@ def generate_html(data, compare_data=None):
     axis4_js = df_to_js_array(data["axis4"], ["commodity_id","segment","n_base","avg_contam_sr","avg_k_sr"])
     axis5_js = df_to_js_array(data["axis5"], ["commodity_id","segment","cta","asc","p_stat","p_ml","esr_stat","esr_ml","n_shocks","hypothesis_holds"])
 
-    # ROC curve 데이터 → JS 객체 리터럴
     roc_curves_js = json.dumps(data.get("roc_curves", {}))
 
     compare_banner = build_compare_banner(meta, compare_data["meta"]) if compare_data else ""
@@ -368,9 +340,6 @@ vH+='</tbody></table>';document.getElementById('verdict_table').innerHTML=vH;
     return html
 
 
-# ---------------------------------------------------------------------------
-# 메인
-# ---------------------------------------------------------------------------
 def main():
     parser = argparse.ArgumentParser(description="ML 평가 대시보드 HTML 생성")
     parser.add_argument("--run", type=str, default=None, help="특정 run 디렉토리명")

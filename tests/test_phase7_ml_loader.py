@@ -1,10 +1,4 @@
-"""Phase 7-ML loader 단위 테스트 — backend_reply_phase7ml_v2 합의안 검증.
-
-검증 대상:
-  - percentile 산출 — segment 단위 (1 - rank) * 100, 3종 모두 "높을수록 이상"
-  - *_anomaly NaN → False 강제
-  - 점수 NULL → percentile NULL
-"""
+"""Phase 7-ML loader 단위 테스트 — percentile·anomaly·PCA 산출 검증."""
 from __future__ import annotations
 
 import math
@@ -35,12 +29,12 @@ def test_force_bool_false():
 
 
 def test_force_bool_none():
-    """None → False (회신 v2 §2.2)."""
+    """None → False."""
     assert _force_bool(None) is False
 
 
 def test_force_bool_nan():
-    """NaN → False — *_anomaly null 금지."""
+    """NaN → False."""
     assert _force_bool(float("nan")) is False
 
 
@@ -72,7 +66,6 @@ def test_F_overflow():
 
 
 def test_F_percentile_limit():
-    # percentile은 0~100 범위로 별도 limit
     assert _F(99.5, limit=100.0) == 99.5
     assert _F(150.0, limit=100.0) is None
 
@@ -93,7 +86,7 @@ def _sample_predictions() -> pd.DataFrame:
 
 
 def test_compute_percentiles_if_direction():
-    """IF score 가장 낮은 행이 percentile 100 — '높을수록 이상' 통일."""
+    """IF score 가장 낮은 행이 percentile 100 — 높을수록 이상."""
     df = _compute_percentiles(_sample_predictions())
     assert df.loc[0, "if_percentile"] == pytest.approx(100.0)
     assert df.loc[4, "if_percentile"] == pytest.approx(20.0)
@@ -219,7 +212,7 @@ def _sample_predictions_for_features(features_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def test_pca_feature_columns_fixed():
-    """피처 6종 + 순서 고정 (회신 v2 §2.2)."""
+    """피처 6종 + 순서 고정."""
     assert _PCA_FEATURE_COLS == [
         "transmission_rate", "upstream_pct", "downstream_pct",
         "ect_or_spread", "exchange_rate_pct", "intl_price_usd_pct",

@@ -1,4 +1,4 @@
-"""Pydantic DTO — /meta/config, /freshness, /events, /meta/pipeline, /meta/analysis-params 응답 (api_spec_vN §방법론 엔드포인트)."""
+"""Pydantic DTO — /meta, /freshness, /events, /segments, /admin/batch 응답."""
 from __future__ import annotations
 
 from datetime import date
@@ -24,7 +24,7 @@ def _date_to_yyyymmdd(d: date | str | None) -> str | None:
 
 
 class MetaConfigResponse(BaseModel):
-    """GET /meta/config — 헬스체크 (frame 단계 신설, §8.2)."""
+    """GET /meta/config — 헬스체크."""
     app_env: Literal["development", "production"]
     db_status: Literal["ok", "down"]
     redis_status: Literal["ok", "down"]
@@ -57,7 +57,7 @@ class EventItem(BaseModel):
     start_date: str    # YYYY-MM
     end_date: str      # YYYY-MM
     color_hex: str
-    # v2 (2026-05-21): 사건이 영향을 미치는 품목 목록. NULL/생략 = 전 품목.
+    # NULL/생략 = 전 품목에 적용
     commodities: list[str] | None = None
 
     @field_validator("start_date", "end_date", mode="before")
@@ -97,7 +97,7 @@ class PatternInfo(BaseModel):
 
 
 class AnalysisParams(BaseModel):
-    """GET /meta/analysis-params 응답 내 params 객체 (api_spec_v5 §/meta/analysis-params)."""
+    """파이프라인 파라미터 기준값."""
     rolling_window: int
     zscore_warning: float
     zscore_alert: float
@@ -116,7 +116,7 @@ class MetaAnalysisParamsResponse(BaseModel):
 
 
 class BatchTriggerResponse(BaseModel):
-    """POST /admin/batch/trigger 202 Accepted 응답 (feature_spec_BE-BATCH_v2 §3.2)."""
+    """POST /admin/batch/trigger 202 Accepted 응답."""
     run_id: int
     status: Literal["running", "completed", "failed"]
     run_date: str   # YYYY-MM-DD

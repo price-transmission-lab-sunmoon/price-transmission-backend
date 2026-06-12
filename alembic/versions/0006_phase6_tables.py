@@ -1,12 +1,6 @@
 """0006_phase6_tables
 
-Phase 6 계량 테이블 수동 정의 (feature_spec_DB-PIPELINE_v2 §3.1, autogenerate 금지).
-포함 테이블: breakpoints, subperiods
-
-* Phase 4 테이블(model_params, irf_data)이 subperiods.id 를 FK 참조하므로
-  이 revision 을 Phase 4~5 테이블(0007)보다 먼저 생성한다.
-* baselines 도 subperiod_id FK 가 필요하나 0003 에서 이미 컬럼만 선언했으므로
-  0007 에서 ALTER TABLE 로 FK 제약을 추가한다.
+breakpoints, subperiods 테이블 추가 (0007의 FK 참조 대상이므로 먼저 생성).
 
 Revision ID: 0006
 Revises: 0005
@@ -26,16 +20,14 @@ depends_on: str | None = None
 
 
 def upgrade() -> None:
-    # db_schema_v5 §breakpoints 기준
-    # UNIQUE (commodity_id, segment_id)
     op.create_table(
         "breakpoints",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("commodity_id", sa.String(20), nullable=False),
         sa.Column("segment_id", sa.String(10), nullable=False),
-        # Bai-Perron 탐지 결과 — "YYYY-MM" → DATE "YYYY-MM-01" 월초 승격 후 적재 (D-07)
+        # Bai-Perron 탐지 결과 — "YYYY-MM" → DATE "YYYY-MM-01" 월초 승격 후 적재
         sa.Column("bp_dates", postgresql.ARRAY(sa.Date()), nullable=True),
-        # Chow Test 결과 — 고정 3개 시점 (D-07)
+        # Chow Test 결과 — 고정 3개 시점
         sa.Column("chow_2008_f", sa.Numeric(10, 4), nullable=True),
         sa.Column("chow_2008_pvalue", sa.Numeric(8, 4), nullable=True),
         sa.Column("chow_2008_sig", sa.Boolean(), nullable=True),
@@ -63,15 +55,13 @@ def upgrade() -> None:
         sa.UniqueConstraint("commodity_id", "segment_id", name="uq_breakpoints_commodity_segment"),
     )
 
-    # db_schema_v5 §subperiods 기준
-    # UNIQUE (commodity_id, segment_id, subperiod_index)
     op.create_table(
         "subperiods",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("commodity_id", sa.String(20), nullable=False),
         sa.Column("segment_id", sa.String(10), nullable=False),
         sa.Column("subperiod_index", sa.SmallInteger(), nullable=False),
-        # "YYYY-MM" → DATE "YYYY-MM-01" 월초 승격 후 적재 (D-07)
+        # "YYYY-MM" → DATE "YYYY-MM-01" 월초 승격 후 적재
         sa.Column("period_start", sa.Date(), nullable=False),
         sa.Column("period_end", sa.Date(), nullable=False),
         sa.Column("n_obs", sa.Integer(), nullable=False),

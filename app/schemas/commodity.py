@@ -1,4 +1,4 @@
-"""Pydantic DTO — /commodities, /commodities/{id}, /segments 응답 (api_spec_vN 1:1 대응)."""
+"""Pydantic DTO — /commodities, /commodities/{id}, /segments 응답."""
 from __future__ import annotations
 
 from datetime import date

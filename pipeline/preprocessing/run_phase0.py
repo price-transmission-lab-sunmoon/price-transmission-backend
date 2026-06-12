@@ -1,9 +1,4 @@
-"""
-Phase 0 전처리 — 통합 실행기
-==============================================
-Step 1~5를 순서대로 실행합니다.
-실행: python src/preprocessing/run_phase0.py
-"""
+"""Phase 0 전처리 통합 실행기 — Step 1~5 순차 실행."""
 
 from pipeline.preprocessing.step1_convert_to_krw import convert_to_krw
 from pipeline.preprocessing.step2_common_period import find_common_period
@@ -19,7 +14,6 @@ def run_phase0():
 
     results = {}
 
-    # Step 1: 국제가 원화 환산
     print("\n\n" + "▶" * 25 + " Step 1: 국제가 원화 환산 " + "◀" * 25)
     try:
         df = convert_to_krw()
@@ -28,7 +22,6 @@ def run_phase0():
         results["step1"] = f"❌ {e}"
         print(f"  ❌ Step 1 실패: {e}")
 
-    # Step 2: 공통 분석 기간 확정
     print("\n\n" + "▶" * 25 + " Step 2: 공통 분석 기간 " + "◀" * 25)
     try:
         df = find_common_period()
@@ -37,7 +30,6 @@ def run_phase0():
         results["step2"] = f"❌ {e}"
         print(f"  ❌ Step 2 실패: {e}")
 
-    # Step 3: 결측치 처리
     print("\n\n" + "▶" * 25 + " Step 3: 결측치 처리 " + "◀" * 25)
     try:
         df = check_missing_values()
@@ -46,7 +38,6 @@ def run_phase0():
         results["step3"] = f"❌ {e}"
         print(f"  ❌ Step 3 실패: {e}")
 
-    # Step 4: 품목별 통합 데이터셋
     print("\n\n" + "▶" * 25 + " Step 4: 통합 데이터셋 " + "◀" * 25)
     try:
         df = merge_all_datasets()
@@ -55,7 +46,6 @@ def run_phase0():
         results["step4"] = f"❌ {e}"
         print(f"  ❌ Step 4 실패: {e}")
 
-    # Step 5: PRODUCT_CONFIG
     print("\n\n" + "▶" * 25 + " Step 5: PRODUCT_CONFIG " + "◀" * 25)
     try:
         config = generate_product_config()
@@ -64,7 +54,6 @@ def run_phase0():
         results["step5"] = f"❌ {e}"
         print(f"  ❌ Step 5 실패: {e}")
 
-    # 최종 요약
     print("\n\n" + "=" * 60)
     print("  📋 Phase 0 전처리 결과 요약")
     print("=" * 60)

@@ -1,4 +1,4 @@
-"""Pydantic DTO — /anomalies/summary, /anomalies/{id}/detail 응답 (api_spec_vN §이상 탐지 엔드포인트)."""
+"""Pydantic DTO — /anomalies/summary, /anomalies/{id}/detail 응답."""
 from __future__ import annotations
 
 from datetime import date
@@ -51,8 +51,8 @@ class StatMetrics(BaseModel):
     zscore: float | None = None
     zscore_warning: bool = False
     zscore_alert: bool = False
-    zscore_threshold_warning: float  # settings.zscore_warning — 서비스 레이어에서 주입
-    zscore_threshold_alert: float    # settings.zscore_alert  — 서비스 레이어에서 주입
+    zscore_threshold_warning: float  # 서비스 레이어에서 settings 값 주입
+    zscore_threshold_alert: float    # 서비스 레이어에서 settings 값 주입
     q1: float | None = None
     q3: float | None = None
     iqr_lower: float | None = None
@@ -80,7 +80,7 @@ class StatMetrics(BaseModel):
 
 
 class MLSummary(BaseModel):
-    # backend_reply_phase7ml_v2 §2.3 — *_anomaly: 항상 boolean (null 금지)
+    # *_anomaly 필드는 항상 boolean (null 금지)
     ml_vote: int = 0
     ml_detected: bool = False
     if_anomaly: bool = False

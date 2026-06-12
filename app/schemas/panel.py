@@ -1,9 +1,4 @@
-"""Pydantic DTO — 패널 엔드포인트 응답 스키마 (api_spec_vN §패널 엔드포인트).
-
-/anomalies/{id}/stat-snapshot  — 비시계열 지표 스냅샷 (IQR 박스플롯·비대칭 히스토그램)
-/anomalies/{id}/irf            — IRF 차트 데이터
-/anomalies/{id}/ml-map         — ML 결과맵 2D 투영 데이터
-"""
+"""Pydantic DTO — stat-snapshot, irf, ml-map 패널 엔드포인트 응답 스키마."""
 from __future__ import annotations
 
 from typing import Annotated, Literal
@@ -12,7 +7,7 @@ from pydantic import BaseModel, Field
 
 
 class StatSnapshotIQRResponse(BaseModel):
-    """metric=iqr — 롤링 IQR 박스플롯 데이터 (api_spec_vN §stat-snapshot)."""
+    """metric=iqr — 롤링 IQR 박스플롯 데이터."""
     anomaly_id: int
     metric: Literal["iqr"]
     period: str                     # YYYY-MM
@@ -26,7 +21,7 @@ class StatSnapshotIQRResponse(BaseModel):
 
 
 class StatSnapshotAsymmetryResponse(BaseModel):
-    """metric=asymmetry — 상승/하락 전이율 분포 히스토그램 데이터 (api_spec_vN §stat-snapshot)."""
+    """metric=asymmetry — 상승/하락 전이율 분포 히스토그램 데이터."""
     model_config = {"protected_namespaces": ()}
 
     anomaly_id: int
@@ -47,7 +42,7 @@ StatSnapshotResponse = Annotated[
 
 
 class IRFDataPoint(BaseModel):
-    """IRF 곡선 단일 포인트 (api_spec_vN §irf)."""
+    """IRF 곡선 단일 포인트."""
     horizon: int
     irf_downstream: float | None = None
     irf_lower_ci: float | None = None
@@ -55,26 +50,26 @@ class IRFDataPoint(BaseModel):
 
 
 class IRFCurve(BaseModel):
-    """전체 기간 또는 하위 기간별 IRF 곡선 (api_spec_vN §irf)."""
+    """전체 기간 또는 하위 기간별 IRF 곡선."""
     scope: Literal["full", "subperiod"]
     label: str
     estimation_start: str | None = None   # YYYY-MM
     estimation_end: str | None = None     # YYYY-MM
-    subperiod_index: int | None = None    # scope=="subperiod" 일 때만
+    subperiod_index: int | None = None    # scope=="subperiod" 인 경우만
     peak_horizon: int | None = None
     peak_magnitude: float | None = None
     data: list[IRFDataPoint] = []
 
 
 class IRFResponse(BaseModel):
-    """GET /anomalies/{id}/irf 응답 (api_spec_vN §irf)."""
+    """GET /anomalies/{id}/irf 응답."""
     commodity_id: str
     segment_id: str
     irfs: list[IRFCurve] = []
 
 
 class MLMapPoint(BaseModel):
-    """ML 결과맵 단일 투영 포인트 (api_spec_vN §ml-map)."""
+    """ML 결과맵 단일 투영 포인트."""
     period: str                          # YYYY-MM
     x_value: float | None = None
     y_value: float | None = None
@@ -84,10 +79,7 @@ class MLMapPoint(BaseModel):
 
 
 class MLMapResponse(BaseModel):
-    """GET /anomalies/{id}/ml-map 응답 (api_spec_vN §ml-map).
-
-    OI-15 보류: projection_method 기본값·축 확정은 S4 스프린트 내.
-    """
+    """GET /anomalies/{id}/ml-map 응답."""
     anomaly_id: int
     commodity_id: str
     segment_id: str

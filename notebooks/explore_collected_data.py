@@ -1,21 +1,10 @@
-"""
-Phase 0 — 수집 데이터 탐색 분석
-==============================================
-수집된 3개 소스(ECOS, World Bank, 관세청)의 데이터 현황을 확인합니다.
-실행 방법: python notebooks/explore_collected_data.py
-
-확인 항목:
-1. 각 소스별 기간·행 수·결측치 현황
-2. 품목별 기간 일치 여부 (분석 가능 공통 기간 산출)
-3. 시계열 시각화 (품목별 4단계 가격 추이)
-"""
+"""수집 데이터 탐색 — 소스별 기간·결측치 현황 및 품목별 가격 시각화."""
 
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from pathlib import Path
 
-# 한글 폰트 설정 (Windows)
 plt.rcParams["font.family"] = "Malgun Gothic"
 plt.rcParams["axes.unicode_minus"] = False
 
@@ -24,14 +13,10 @@ OUTPUT_DIR = PROJECT_ROOT / "data" / "output"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
-# ============================================================
-# 1. 데이터 로드
-# ============================================================
 def load_all_data():
-    """수집된 CSV 파일들을 로드"""
+    """수집된 CSV 로드."""
     data = {}
 
-    # ECOS PPI/CPI
     ecos_path = PROJECT_ROOT / "data" / "raw" / "ecos" / "ecos_ppi_cpi.csv"
     if ecos_path.exists():
         data["ecos"] = pd.read_csv(ecos_path, parse_dates=["date"])
@@ -39,7 +24,6 @@ def load_all_data():
     else:
         print(f"  ❌ ECOS 파일 없음: {ecos_path}")
 
-    # World Bank
     wb_path = PROJECT_ROOT / "data" / "raw" / "worldbank" / "worldbank_prices.csv"
     if wb_path.exists():
         data["worldbank"] = pd.read_csv(wb_path, parse_dates=["date"])
@@ -47,7 +31,6 @@ def load_all_data():
     else:
         print(f"  ❌ World Bank 파일 없음: {wb_path}")
 
-    # 관세청
     customs_path = PROJECT_ROOT / "data" / "raw" / "customs" / "customs_import_prices.csv"
     if customs_path.exists():
         data["customs"] = pd.read_csv(customs_path, parse_dates=["date"])
@@ -55,7 +38,6 @@ def load_all_data():
     else:
         print(f"  ❌ 관세청 파일 없음: {customs_path}")
 
-    # 환율 (있으면)
     exrate_path = PROJECT_ROOT / "data" / "raw" / "exchange_rate" / "exchange_rate_monthly.csv"
     if exrate_path.exists():
         data["exchange_rate"] = pd.read_csv(exrate_path, parse_dates=["date"])
@@ -66,21 +48,16 @@ def load_all_data():
     return data
 
 
-# ============================================================
-# 2. 기간·결측치 현황
-# ============================================================
 def analyze_coverage(data):
-    """각 소스별 품목별 기간과 결측치 현황"""
+    """소스별 품목별 기간·결측치 현황."""
     print(f"\n{'='*70}")
-    print(f"  📊 소스별 데이터 현황")
+    print(f"  소스별 데이터 현황")
     print(f"{'='*70}")
 
     coverage = []
 
-    # ECOS
     if "ecos" in data:
         df = data["ecos"]
-        # 주 품목만 (cpi_alt 제외)
         for (cid, dtype), grp in df[df["data_type"].isin(["ppi", "cpi"])].groupby(["commodity_id", "data_type"]):
             coverage.append({
                 "source": "ECOS",
@@ -93,7 +70,6 @@ def analyze_coverage(data):
                 "missing": grp["value"].isna().sum(),
             })
 
-    # World Bank
     if "worldbank" in data:
         df = data["worldbank"]
         for cid, grp in df.groupby("commodity_id"):
@@ -108,7 +84,6 @@ def analyze_coverage(data):
                 "missing": grp["price_usd_mt"].isna().sum(),
             })
 
-    # 관세청
     if "customs" in data:
         df = data["customs"]
         for cid, grp in df.groupby("commodity_id"):
@@ -123,7 +98,6 @@ def analyze_coverage(data):
                 "missing": grp["import_unit_price"].isna().sum(),
             })
 
-    # 환율
     if "exchange_rate" in data:
         df = data["exchange_rate"]
         coverage.append({
@@ -139,7 +113,6 @@ def analyze_coverage(data):
 
     cov_df = pd.DataFrame(coverage)
 
-    # 출력
     print(f"\n  {'소스':<12} {'품목':<10} {'유형':<15} {'항목':<18} {'시작':>8} {'종료':>8} {'월수':>5} {'결측':>4}")
     print(f"  {'-'*90}")
     for _, row in cov_df.iterrows():
@@ -152,13 +125,10 @@ def analyze_coverage(data):
     return cov_df
 
 
-# ============================================================
-# 3. 공통 분석 가능 기간 산출
-# ============================================================
 def find_common_period(data):
-    """품목별 모든 소스가 겹치는 공통 기간 산출"""
+    """품목별 소스 교집합 기간 산출."""
     print(f"\n{'='*70}")
-    print(f"  📅 품목별 공통 분석 가능 기간")
+    print(f"  품목별 공통 분석 가능 기간")
     print(f"{'='*70}")
 
     commodities = ["wheat", "maize", "soybean"]
@@ -167,28 +137,24 @@ def find_common_period(data):
         starts = []
         ends = []
 
-        # World Bank
         if "worldbank" in data:
             wb = data["worldbank"][data["worldbank"]["commodity_id"] == cid]
             if not wb.empty:
                 starts.append(wb["date"].min())
                 ends.append(wb["date"].max())
 
-        # 관세청
         if "customs" in data:
             cu = data["customs"][data["customs"]["commodity_id"] == cid]
             if not cu.empty:
                 starts.append(cu["date"].min())
                 ends.append(cu["date"].max())
 
-        # ECOS PPI
         if "ecos" in data:
             ppi = data["ecos"][(data["ecos"]["commodity_id"] == cid) & (data["ecos"]["data_type"] == "ppi")]
             if not ppi.empty:
                 starts.append(ppi["date"].min())
                 ends.append(ppi["date"].max())
 
-        # ECOS CPI
         if "ecos" in data:
             cpi = data["ecos"][(data["ecos"]["commodity_id"] == cid) & (data["ecos"]["data_type"] == "cpi")]
             if not cpi.empty:
@@ -204,13 +170,10 @@ def find_common_period(data):
             print(f"  {cid:<10} 데이터 부족")
 
 
-# ============================================================
-# 4. 시각화
-# ============================================================
 def plot_price_series(data):
-    """품목별 가격 전달 체계 시각화"""
+    """품목별 국제가·수입단가·PPI/CPI 3열 시각화."""
     print(f"\n{'='*70}")
-    print(f"  📈 시각화 생성 중...")
+    print(f"  시각화 생성 중...")
     print(f"{'='*70}")
 
     commodities = {
@@ -222,7 +185,6 @@ def plot_price_series(data):
     fig, axes = plt.subplots(3, 3, figsize=(18, 12))
 
     for row_idx, (cid, info) in enumerate(commodities.items()):
-        # --- 국제가 (World Bank) ---
         ax = axes[row_idx][0]
         if "worldbank" in data:
             wb = data["worldbank"][data["worldbank"]["commodity_id"] == cid].sort_values("date")
@@ -234,7 +196,6 @@ def plot_price_series(data):
         ax.xaxis.set_major_locator(mdates.YearLocator(5))
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
 
-        # --- 수입단가 (관세청) ---
         ax = axes[row_idx][1]
         if "customs" in data:
             cu = data["customs"][data["customs"]["commodity_id"] == cid].sort_values("date")
@@ -246,7 +207,6 @@ def plot_price_series(data):
         ax.xaxis.set_major_locator(mdates.YearLocator(5))
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
 
-        # --- PPI + CPI (ECOS) ---
         ax = axes[row_idx][2]
         if "ecos" in data:
             ppi = data["ecos"][(data["ecos"]["commodity_id"] == cid) & (data["ecos"]["data_type"] == "ppi")].sort_values("date")
@@ -265,7 +225,6 @@ def plot_price_series(data):
     plt.suptitle("Phase 0 수집 데이터 탐색 — 품목별 가격 전달 체계", fontsize=14, fontweight="bold")
     plt.tight_layout()
 
-    # 저장
     chart_path = OUTPUT_DIR / "explore_collected_data.png"
     plt.savefig(chart_path, dpi=150, bbox_inches="tight")
     print(f"  💾 차트 저장: {chart_path}")
@@ -273,7 +232,7 @@ def plot_price_series(data):
 
 
 def plot_overlay_comparison(data):
-    """국제가 vs 수입단가 오버레이 비교 (구간 A 사전 검토)"""
+    """국제가 vs 수입단가 오버레이 비교."""
     fig, axes = plt.subplots(1, 3, figsize=(18, 5))
 
     commodities = {
@@ -285,13 +244,11 @@ def plot_overlay_comparison(data):
     for idx, (cid, kr_name) in enumerate(commodities.items()):
         ax = axes[idx]
 
-        # World Bank
         if "worldbank" in data:
             wb = data["worldbank"][data["worldbank"]["commodity_id"] == cid].sort_values("date")
             if not wb.empty:
                 ax.plot(wb["date"], wb["price_usd_mt"], color="tab:blue", linewidth=1, label="국제가 (World Bank)")
 
-        # 관세청
         if "customs" in data:
             cu = data["customs"][data["customs"]["commodity_id"] == cid].sort_values("date")
             if not cu.empty:
@@ -304,7 +261,7 @@ def plot_overlay_comparison(data):
         ax.xaxis.set_major_locator(mdates.YearLocator(5))
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
 
-    plt.suptitle("구간 A 사전 검토: 국제가 → 수입단가 전달 추이", fontsize=13, fontweight="bold")
+    plt.suptitle("국제가 → 수입단가 전달 추이", fontsize=13, fontweight="bold")
     plt.tight_layout()
 
     chart_path = OUTPUT_DIR / "explore_segment_A_comparison.png"
@@ -313,25 +270,18 @@ def plot_overlay_comparison(data):
     plt.show()
 
 
-# ============================================================
-# 메인
-# ============================================================
 if __name__ == "__main__":
     print("╔══════════════════════════════════════════════════════════╗")
     print("║  Phase 0 — 수집 데이터 탐색 분석                       ║")
     print("╚══════════════════════════════════════════════════════════╝")
 
-    # 로드
     print(f"\n  📂 데이터 로드:")
     data = load_all_data()
 
-    # 현황
     cov_df = analyze_coverage(data)
 
-    # 공통 기간
     find_common_period(data)
 
-    # 시각화
     plot_price_series(data)
     plot_overlay_comparison(data)
 

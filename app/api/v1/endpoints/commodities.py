@@ -1,6 +1,4 @@
-"""/commodities, /commodities/{id}, /stream, /stream/minimap,
-/scatter, /raw-prices, /raw-prices/minimap 엔드포인트 (api_spec_vN §참조·시각화 엔드포인트).
-"""
+"""/commodities 엔드포인트 — 목록, 상세, stream, scatter, raw-prices."""
 from __future__ import annotations
 
 from datetime import date
@@ -49,7 +47,7 @@ def _analysis_dates(commodity: CommodityDetail, commodity_id: str) -> tuple[date
 async def list_commodities(
     db: AsyncSession = Depends(get_db),
 ) -> CommodityListResponse:
-    """품목 목록 — commodities 테이블 실 DB 조회 (feature_spec_API-REF_v4 §1.2)."""
+    """품목 목록 조회."""
     return await ref_svc.get_commodities(db)
 
 
@@ -74,8 +72,7 @@ async def get_stream(
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ) -> StreamResponse:
-    """스트림 그래프 시계열 + 이상 노드 — Redis TTL 캐싱 적용 (feature_spec_BE-REDIS_v2 §3.3)."""
-    # 캐시 키: segments/grade/patterns는 §3.3 segment_id 구분자에 대응
+    """스트림 그래프 시계열 + 이상 노드 — Redis TTL 캐싱 적용."""
     seg_key = segments or "all"
     cache_key = (
         f"{settings.redis_cache_prefix}:stream:"
@@ -159,8 +156,7 @@ async def get_raw_prices(
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ) -> RawPricesResponse:
-    """원시 시계열 레이아웃 1~6 — Redis TTL 캐싱 적용 (feature_spec_BE-REDIS_v2 §3.3)."""
-    # 캐시 키: raw-prices:{cid}:all:{from}:{to}:{granularity}:{layout}
+    """원시 시계열 레이아웃 1~6 — Redis TTL 캐싱 적용."""
     cache_key = (
         f"{settings.redis_cache_prefix}:raw-prices:"
         f"{commodity_id}:all:{from_ or 'default'}:{to or 'default'}:{granularity}:{layout}"

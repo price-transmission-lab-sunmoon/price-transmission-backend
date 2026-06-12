@@ -1,4 +1,4 @@
-"""참조 엔드포인트 DB 쿼리 비즈니스 로직 (feature_spec_API-REF_v4).
+"""참조 엔드포인트 DB 쿼리 비즈니스 로직.
 
 엔드포인트: /commodities, /commodities/{id}, /segments, /events, /freshness
 """
@@ -24,20 +24,20 @@ from app.schemas.commodity import (
 )
 from app.schemas.meta import EventItem, EventListResponse, FreshnessResponse
 
-# ETag 메모리 캐시 — 서버 기동 후 첫 조회 시 1회 계산 (하드코딩 금지, 명세 §4)
+# 서버 기동 후 첫 조회 시 1회만 계산하는 ETag 캐시
 _segments_etag: str | None = None
 _events_etag: str | None = None
 
 
 def _route_type_to_segments(route_type: str) -> list[str]:
-    """route_type → segments 파생 (api_spec_vN §GET /commodities)."""
+    """route_type → segment 목록 반환."""
     if route_type == "3seg":
         return ["A", "B", "D_prime"]
     return ["A", "B", "C", "D"]
 
 
 def _compute_etag(data: object) -> str:
-    """응답 본문 SHA-256 해시 앞 32자 — ETag 값."""
+    """응답 본문 SHA-256 해시 앞 32자."""
     body = json.dumps(data, ensure_ascii=False, sort_keys=True, default=str)
     return hashlib.sha256(body.encode()).hexdigest()[:32]
 
@@ -69,8 +69,8 @@ async def get_commodities(db: AsyncSession) -> CommodityListResponse:
                     segments=_route_type_to_segments(row.route_type),
                     analysis_start=row.analysis_start,
                     analysis_end=row.analysis_end,
-                    has_anomaly_this_month=False,   # Phase 7 전 false (명세 §1.4)
-                    latest_anomaly_grade=None,       # Phase 7 전 null
+                    has_anomaly_this_month=False,
+                    latest_anomaly_grade=None,
                 )
             )
         except Exception as e:
@@ -91,7 +91,6 @@ async def get_commodities(db: AsyncSession) -> CommodityListResponse:
 
 async def get_commodity_detail(db: AsyncSession, commodity_id: str) -> CommodityDetail:
     """단일 품목 상세 조회 + segment_meta — GET /commodities/{id}."""
-    # 1. 품목 조회
     result = await db.execute(
         select(Commodity).where(Commodity.commodity_id == commodity_id)
     )
@@ -115,7 +114,7 @@ async def get_commodity_detail(db: AsyncSession, commodity_id: str) -> Commodity
             public_code="PIPELINE_DATA_MISSING",
         )
 
-    # 2. baselines 조회 (subperiod_id IS NULL — 전체 기간 기준선, D-15)
+    # subperiod_id IS NULL = 전체 기간 기준선
     baselines_result = await db.execute(
         select(Baseline, Segment)
         .join(Segment, Segment.segment_id == Baseline.segment_id)
@@ -124,7 +123,6 @@ async def get_commodity_detail(db: AsyncSession, commodity_id: str) -> Commodity
     )
     baseline_rows = baselines_result.all()
 
-    # 3. cointegration_results 조회
     coint_result = await db.execute(
         select(CointegrationResult)
         .where(CointegrationResult.commodity_id == commodity_id)
@@ -133,7 +131,6 @@ async def get_commodity_detail(db: AsyncSession, commodity_id: str) -> Commodity
         r.segment_id: r for r in coint_result.scalars().all()
     }
 
-    # 4. segment_meta 조합 (A/B/C/D/D′ 구간별)
     segment_meta: dict[str, SegmentMeta] = {}
     for baseline, segment in baseline_rows:
         coint = coint_map.get(baseline.segment_id)
@@ -145,7 +142,7 @@ async def get_commodity_detail(db: AsyncSession, commodity_id: str) -> Commodity
                 transmission_elasticity=float(baseline.transmission_elasticity),
                 upstream_label=segment.upstream_label,
                 downstream_label=segment.downstream_label,
-                warmup_end=baseline.warmup_end,  # baselines.warmup_end 직접 반환 (D-06)
+                warmup_end=baseline.warmup_end,
             )
         except Exception as e:
             raise ParseError(
@@ -233,7 +230,7 @@ async def get_events(db: AsyncSession) -> tuple[EventListResponse, str]:
     ]
     response = EventListResponse(events=items)
 
-    # commodities 추가로 ETag 갱신 필요 — 매 호출 재계산
+    # commodities 필드가 가변적이므로 매 호출 재계산
     _events_etag = _compute_etag(response.model_dump())
 
     return response, _events_etag

@@ -1,8 +1,4 @@
-"""pipeline_runs 기록 + 트랜잭션 공통 유틸리티
-
-feature_spec_DB-PIPELINE_v2 §3.3, §5.1 기준.
-exception_design_v3 §2 에러 체이닝 패턴 준수.
-"""
+"""pipeline_runs 기록 + 트랜잭션 공통 유틸리티."""
 from __future__ import annotations
 
 import logging
@@ -32,10 +28,7 @@ def _v(val):
 
 
 def normalize_yyyymm_to_date(raw: str) -> date:
-    """'YYYY-MM' 문자열 → date(YYYY, MM, 1).
-
-    D-11: period.day == 1 검증. 실패 시 DB-TYPE-001 FATAL.
-    """
+    """'YYYY-MM' 문자열 → date(YYYY, MM, 1). 실패 시 DB-TYPE-001."""
     try:
         parts = raw.strip().split("-")
         if len(parts) != 2:
@@ -51,7 +44,7 @@ def normalize_yyyymm_to_date(raw: str) -> date:
 
 
 def validate_period_day(d: date, table: str) -> None:
-    """period.day == 1 검증 (D-11). 실패 시 DB-TYPE-001 FATAL."""
+    """period.day == 1 검증. 실패 시 DB-TYPE-001."""
     if d.day != 1:
         raise DBError(
             "DB-TYPE-001",
@@ -65,10 +58,7 @@ async def create_pipeline_run(
     run_date: date,
     data_up_to: date,
 ) -> int:
-    """pipeline_runs 에 'running' 상태로 1건 INSERT. run_id 반환.
-
-    중복 run_date 시 DB-RUN-001 FATAL.
-    """
+    """pipeline_runs 에 'running' 상태로 INSERT. run_id 반환."""
     try:
         result = await session.execute(
             text(
@@ -100,7 +90,6 @@ async def update_pipeline_run_status(
     phases_run: list[str] | None = None,
     error_message: str | None = None,
 ) -> None:
-    """pipeline_runs.status 갱신 + finished_at 기록."""
     await session.execute(
         text(
             """
@@ -131,7 +120,6 @@ async def append_phase_to_run(
     run_id: int,
     phase: str,
 ) -> None:
-    """phases_run 배열에 완료 Phase 번호를 누적 추가."""
     await session.execute(
         text(
             """
@@ -151,13 +139,9 @@ async def upsert_data_freshness(
     data_up_to: date,
     next_run_date: date,
 ) -> None:
-    """data_freshness 테이블 — 항상 최신 1개 행 유지 UPSERT.
+    """data_freshness 최신 1개 행 유지 UPSERT.
 
-    feature_spec_DB-PIPELINE_v2 §3.2: Phase 전체 완료 후 갱신.
-
-    UPDATE 우선 실행 → rowcount=0(행 없음)이면 INSERT.
-    data_freshness는 PK 외 별도 UNIQUE 제약이 없으므로
-    INSERT-ON CONFLICT 패턴은 중복 행을 방지할 수 없다.
+    UPDATE 우선 → rowcount=0이면 INSERT (UNIQUE 제약 없어 ON CONFLICT 불가).
     """
     result = await session.execute(
         text(
@@ -173,7 +157,6 @@ async def upsert_data_freshness(
         {"data_up_to": data_up_to, "next_run_date": next_run_date, "run_id": run_id},
     )
     if result.rowcount == 0:
-        # 행이 없을 때만 INSERT (최초 실행)
         await session.execute(
             text(
                 """

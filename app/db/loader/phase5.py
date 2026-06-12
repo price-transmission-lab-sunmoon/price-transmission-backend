@@ -1,14 +1,7 @@
-"""Phase 5 — granger_results 적재 + cointegration_results.granger_direction 갱신
+"""Phase 5 — granger_results 적재 + cointegration_results.granger_direction 갱신.
 
-feature_spec_DB-PIPELINE_v2 §2 입력 데이터 기준.
-exception_design_v3 §2 에러 체이닝 패턴 준수.
-
-컬럼명 매핑:
-  segment  → segment_id
-  best_lag → 적재 제외 (DB granger_results 에 없음)
-
-적재 대상: 4구간 품목(groundnuts, banana, orange) 구간 C만 존재.
-granger_direction UPDATE: Phase 5 단일 트랜잭션 내에서 cointegration_results 갱신.
+컬럼명 매핑: segment→segment_id. best_lag 는 granger_results 에 없어 적재 제외.
+granger_direction UPDATE 는 동일 트랜잭션 내 수행.
 """
 from __future__ import annotations
 
@@ -30,12 +23,7 @@ async def load_granger_results(
     session: AsyncSession,
     run_id: int,
 ) -> int:
-    """Phase 5 granger_results.csv → granger_results UPSERT
-    + cointegration_results.granger_direction UPDATE.
-
-    UNIQUE KEY: (commodity_id, segment_id, direction).
-    Returns granger_results upserted row count.
-    """
+    """granger_results UPSERT + cointegration_results.granger_direction UPDATE."""
     csv_path = Path(settings.pipeline_data_root) / "phase5" / "granger_results.csv"
     if not csv_path.exists():
         raise DBError(
@@ -99,13 +87,10 @@ async def load_granger_results(
                     "significant": bool(significant_raw),
                     "confirmed_direction": _v(row.get("confirmed_direction")),
                     "pipeline_run_id": run_id,
-                    # best_lag 는 DB granger_results 에 없으므로 적재 제외
                 },
             )
 
-        # 4구간 품목 구간 C: (commodity_id, segment_id='C') 기준으로 갱신.
-        # 두 방향 행(ppi_to_wholesale, wholesale_to_ppi)의 confirmed_direction 은 동일값이므로
-        # 첫 번째 non-null 값을 사용.
+        # (cid, seg) 당 confirmed_direction 첫 번째 non-null 값으로 갱신
         granger_map: dict[tuple[str, str], str | None] = {}
         for _, row in df.iterrows():
             key = (str(row["commodity_id"]), str(row["segment"]))
@@ -132,6 +117,7 @@ async def load_granger_results(
         await session.commit()
     except DBError:
         await session.rollback()
+
         raise
     except Exception as e:
         await session.rollback()

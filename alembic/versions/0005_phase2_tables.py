@@ -1,10 +1,6 @@
 """0005_phase2_tables
 
-Phase 2 계량 테이블 수동 정의 (feature_spec_DB-PIPELINE_v2 §3.1, autogenerate 금지).
-포함 테이블: stationarity_results
-
-* cointegration_results는 0004_add_cointegration_results.py 에서 이미 정의됨.
-* stationarity_results만 이 revision 에서 신규 추가.
+stationarity_results 테이블 추가 (cointegration_results는 0004에서 정의됨).
 
 Revision ID: 0005
 Revises: 0004
@@ -23,8 +19,6 @@ depends_on: str | None = None
 
 
 def upgrade() -> None:
-    # db_schema_v5 §stationarity_results 기준
-    # UNIQUE (commodity_id, price_col)
     op.create_table(
         "stationarity_results",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),

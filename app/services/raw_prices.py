@@ -1,4 +1,4 @@
-"""원시 시계열·미니맵 비즈니스 로직 (feature_spec_API-STR_v5 §1.2).
+"""원시 시계열·미니맵 비즈니스 로직.
 
 엔드포인트: GET /commodities/{id}/raw-prices
             GET /commodities/{id}/raw-prices/minimap
@@ -35,7 +35,7 @@ _SOURCE_META: dict[str, tuple[str, str, str]] = {
     "wholesale_price": ("도매가격",                  "blue",   "wholesale_price_idx"),
 }
 
-# 레이아웃별 소스 (api_spec_vN §D-12)
+# 레이아웃별 소스 컬럼 목록
 _LAYOUT_SOURCES_4SEG: dict[int, list[str]] = {
     1: ["intl_price_krw", "import_price_usd", "ppi", "wholesale_price", "cpi"],
     2: ["intl_price_krw", "import_price_usd"],
@@ -145,7 +145,7 @@ async def get_raw_prices(
     to_str: str | None,
     granularity: str,
 ) -> RawPricesResponse:
-    """원시 시계열 반환 (feature_spec_API-STR_v5 §1.2)."""
+    """원시 시계열 반환."""
     # 1. granularity 검증 (API-STR-004)
     if granularity not in ("monthly", "quarterly", "yearly"):
         raise APIError(
@@ -292,7 +292,7 @@ async def get_raw_prices(
     if total_points == 0 and series:
         total_points = max(len(s.data) for s in series) if series else 0
 
-    # 8. transmission_overlay — 레이아웃 2~6에서만 포함 (api_spec_vN §raw-prices)
+    # 8. transmission_overlay — 레이아웃 2~6에서만 포함
     transmission_overlay: list[TransmissionOverlaySeries] = []
     if layout != 1:
         try:
@@ -358,7 +358,7 @@ async def get_raw_prices_minimap(
     analysis_end: date,
     layout: int,
 ) -> RawPricesMinimapResponse:
-    """원시 시계열 미니맵 — 전체 기간 yearly 고정 + anomaly_density (feature_spec_API-STR_v5 §1.2)."""
+    """원시 시계열 미니맵 — 전체 기간 yearly 고정 + anomaly_density."""
     # 1. 레이아웃 → 소스 결정 (API-LAY-001, API-LAY-002)
     sources = _resolve_sources(layout, route_type, commodity_id)
 
