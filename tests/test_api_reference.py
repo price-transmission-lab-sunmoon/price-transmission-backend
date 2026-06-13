@@ -1,4 +1,4 @@
-"""참조 엔드포인트 통합 테스트 — DB AsyncMock + 서비스 패치 방식."""
+"""참조 엔드포인트 통합 테스트. DB AsyncMock과 서비스 패치 방식을 사용한다."""
 from __future__ import annotations
 
 import json
@@ -165,7 +165,7 @@ async def test_commodities_list_200():
 
 @pytest.mark.asyncio
 async def test_commodities_list_fields():
-    """각 품목 필수 필드·Literal 값 검증."""
+    """각 품목 필수 필드 및 Literal 값 검증."""
     allowed_clusters = {"grain", "oil_sugar", "tropical", "livestock", "independent"}
     allowed_route_types = {"3seg", "4seg"}
     _yyyymm = re.compile(r"^\d{4}-\d{2}$")
@@ -241,7 +241,7 @@ async def test_commodity_detail_wheat_200():
 
 @pytest.mark.asyncio
 async def test_commodity_detail_segment_meta_wheat():
-    """wheat segment_meta — A/B/D_prime 구간 메타 검증."""
+    """wheat segment_meta. A/B/D_prime 구간 메타를 검증한다."""
     _yyyymm = re.compile(r"^\d{4}-\d{2}$")
     with patch("app.services.reference.get_commodity_detail", new_callable=AsyncMock) as mock_svc:
         mock_svc.return_value = _build_commodity_detail("wheat")
@@ -260,7 +260,7 @@ async def test_commodity_detail_segment_meta_wheat():
 
 @pytest.mark.asyncio
 async def test_commodity_detail_banana_4seg():
-    """banana 상세 — 4seg segments와 C/D 구간 포함 segment_meta."""
+    """banana 상세. 4seg segments와 C/D 구간 포함 segment_meta를 검증한다."""
     with patch("app.services.reference.get_commodity_detail", new_callable=AsyncMock) as mock_svc:
         mock_svc.return_value = _build_commodity_detail("banana")
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -274,7 +274,7 @@ async def test_commodity_detail_banana_4seg():
 
 @pytest.mark.asyncio
 async def test_commodity_detail_not_found_404():
-    """존재하지 않는 품목 → 404 + COMMODITY_NOT_FOUND."""
+    """존재하지 않는 품목 조회 시 404와 COMMODITY_NOT_FOUND를 반환한다."""
     from app.core.exceptions import APIError
 
     def _raise(*_args, **_kwargs):
@@ -299,7 +299,7 @@ async def test_commodity_detail_not_found_404():
 
 @pytest.mark.asyncio
 async def test_commodity_detail_error_envelope():
-    """에러 응답 envelope 구조 — {"error": {"code", "message", "context"}}."""
+    """에러 응답 envelope 구조: {"error": {"code", "message", "context"}}."""
     from app.core.exceptions import APIError
 
     with patch(
@@ -340,7 +340,7 @@ async def test_segments_200():
 
 @pytest.mark.asyncio
 async def test_segments_ids():
-    """구간 ID 집합 — A/B/C/D/D_prime 5종 모두 존재."""
+    """구간 ID 집합. A/B/C/D/D_prime 5종이 모두 존재해야 한다."""
     with patch("app.services.reference.get_segments", new_callable=AsyncMock) as mock_svc:
         mock_svc.return_value = _build_segments()
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -439,7 +439,7 @@ async def test_events_etag_and_cache_headers():
 
 @pytest.mark.asyncio
 async def test_events_etag_stable():
-    """같은 데이터 2회 요청 시 ETag 동일 — 캐시 안정성."""
+    """같은 데이터 2회 요청 시 ETag가 동일해야 한다. 캐시 안정성 검증."""
     with patch("app.services.reference.get_events", new_callable=AsyncMock) as mock_svc:
         mock_svc.return_value = _build_events()
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:

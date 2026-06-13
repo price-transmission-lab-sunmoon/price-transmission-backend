@@ -1,5 +1,5 @@
 """
-Phase 7-ML 실행 진입점 — A/B 구간 20개 조합에 대해 ML 파이프라인 실행.
+Phase 7-ML 실행 진입점. A/B 구간 20개 조합에 대해 ML 파이프라인을 실행한다.
 
 입력: phase7/stat_timeseries, phase7_summary.csv, product_config.json
 출력: phase7_ml/features, predictions, cross_validation, confidence_grades (각 20개)

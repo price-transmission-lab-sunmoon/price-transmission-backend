@@ -1,5 +1,5 @@
 """
-Phase 5 — Granger 인과 방향 확정 (구간 C: PPI ↔ 도매가).
+Phase 5. Granger 인과 방향 확정 (구간 C: PPI와 도매가 간 인과).
 
 적용 대상: has_wholesale=True 품목(groundnuts, banana, orange).
 
@@ -130,9 +130,9 @@ def determine_confirmed_direction(
 ) -> str:
     """
     양방향 검정 종합 판정.
-    - 한쪽만 유의 → 해당 방향
-    - 양방향 유의 → 'bidirectional' (PPI→도매가 기본 방향 유지)
-    - 양방향 비유의 → 'none'
+    - 한쪽만 유의 시 해당 방향 확정
+    - 양방향 유의 시 'bidirectional' (PPI에서 도매가 방향을 기본 유지)
+    - 양방향 비유의 시 'none'
     """
     sig_ppi_to_ws = result_ppi_to_ws["significant"]
     sig_ws_to_ppi = result_ws_to_ppi["significant"]
@@ -185,7 +185,7 @@ def run_phase5(
 ):
     """Phase 5 전체 실행."""
     logger.info(
-        'PHASE_START", "msg": "Phase 5 시작 — Granger 인과 방향 확정", "phase": "5"'
+        'PHASE_START", "msg": "Phase 5 시작, Granger 인과 방향 확정", "phase": "5"'
     )
 
     product_config, model_routing = load_configs(product_config_path, model_routing_path)
@@ -238,7 +238,7 @@ def run_phase5(
 
         logger.info(
             'ITEM_DONE", "msg": "%s confirmed_direction=%s '
-            '(ppi→ws: F=%.4f, p=%.4f, sig=%s | ws→ppi: F=%.4f, p=%.4f, sig=%s)", '
+            '(ppi에서ws: F=%.4f, p=%.4f, sig=%s | ws에서ppi: F=%.4f, p=%.4f, sig=%s)", '
             '"phase": "5"',
             cid, confirmed,
             result_ppi_to_ws["f_stat"], result_ppi_to_ws["pvalue"], result_ppi_to_ws["significant"],
@@ -265,7 +265,7 @@ def run_phase5(
     )
 
     print("\n" + "=" * 70)
-    print("Phase 5 — Granger 인과 방향 확정 결과")
+    print("Phase 5. Granger 인과 방향 확정 결과")
     print("=" * 70)
 
     if not all_results:
@@ -283,24 +283,24 @@ def run_phase5(
             continue
         confirmed = rows[0]["confirmed_direction"]
 
-        print(f"\n[{cid}] 구간 C (PPI ↔ 도매가)")
-        print(f"  PPI → 도매가: F={ppi_row['f_stat']:.4f}, p={ppi_row['pvalue']:.4f}"
+        print(f"\n[{cid}] 구간 C (PPI와 도매가 간 인과)")
+        print(f"  PPI가 도매가에 미치는 인과: F={ppi_row['f_stat']:.4f}, p={ppi_row['pvalue']:.4f}"
               f"  {'✔ 유의' if ppi_row['significant'] else '✗ 비유의'}")
-        print(f"  도매가 → PPI: F={ws_row['f_stat']:.4f}, p={ws_row['pvalue']:.4f}"
+        print(f"  도매가가 PPI에 미치는 인과: F={ws_row['f_stat']:.4f}, p={ws_row['pvalue']:.4f}"
               f"  {'✔ 유의' if ws_row['significant'] else '✗ 비유의'}")
 
         direction_label = {
-            "ppi_to_wholesale": "→ PPI가 도매가를 선행 (PPI → 도매가)",
-            "wholesale_to_ppi": "→ 도매가가 PPI를 선행 (도매가 → PPI)",
-            "bidirectional": "→ 양방향 인과 (PPI ↔ 도매가) — PPI→도매가 기본 방향 유지",
-            "none": "→ 인과 관계 미확인 — Phase 7 패턴 1만 적용",
+            "ppi_to_wholesale": "확정: PPI가 도매가를 선행",
+            "wholesale_to_ppi": "확정: 도매가가 PPI를 선행",
+            "bidirectional": "확정: 양방향 인과 (PPI와 도매가 간 상호 선행). PPI에서 도매가 방향을 기본 방향으로 유지",
+            "none": "확정: 인과 관계 미확인. Phase 7 패턴 1만 적용",
         }
         print(f"  확정: {direction_label.get(confirmed, confirmed)}")
 
     print("\n" + "=" * 70)
 
     logger.info(
-        'PHASE_DONE", "msg": "Phase 5 완료 — %d개 품목 검정 완료", "phase": "5"',
+        'PHASE_DONE", "msg": "Phase 5 완료, %d개 품목 검정 완료", "phase": "5"',
         len(targets),
     )
 

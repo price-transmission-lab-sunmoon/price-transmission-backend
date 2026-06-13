@@ -1,4 +1,4 @@
-"""시계열 granularity 집계 + 연도별 이상 밀도 — stream/raw_prices 공통."""
+"""시계열 granularity 집계 및 연도별 이상 밀도. stream, raw_prices 공통."""
 from __future__ import annotations
 
 from collections import defaultdict
@@ -15,7 +15,7 @@ def quarter_key(d: date) -> tuple[int, int]:
 
 
 def quarter_last_month(year: int, q0: int) -> date:
-    """분기 마지막 월 1일 반환 (3·6·9·12월)."""
+    """분기 마지막 월 1일 반환 (3, 6, 9, 12월)."""
     return date(year, (q0 + 1) * 3, 1)
 
 
@@ -67,7 +67,7 @@ def aggregate_by_granularity(
 
 
 def build_anomaly_density(density_rows) -> list[AnomalyDensityPoint]:
-    """mv_anomaly_density_yearly 행 → 연도별 구간 합산 목록."""
+    """mv_anomaly_density_yearly 행을 연도별 구간 합산 목록으로 변환."""
     year_density: dict[int, dict] = {}
     for dr in density_rows:
         y = int(dr.year)

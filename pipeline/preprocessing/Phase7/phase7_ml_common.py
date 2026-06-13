@@ -1,5 +1,5 @@
 """
-Phase 7-ML 공통 모듈 — 피처 행렬 구성, 전처리, stat_detected 조인.
+Phase 7-ML 공통 모듈. 피처 행렬 구성, 전처리, stat_detected 조인 기능을 제공한다.
 
 피처 6종: transmission_rate, upstream_pct, downstream_pct,
           ect_or_spread, exchange_rate_pct, intl_price_usd_pct

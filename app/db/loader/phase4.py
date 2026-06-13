@@ -1,9 +1,10 @@
-"""Phase 4 — model_params / irf_data / baselines 적재.
+"""Phase 4: model_params / irf_data / baselines 적재.
 
-JSON 필드명 매핑: segment→segment_id, lag_selection_criterion→lag_criterion,
-  estimation_period_start/end → estimation_start/end (YYYY-MM → DATE).
+JSON 필드명 매핑:
+  segment 는 segment_id 로, lag_selection_criterion 은 lag_criterion 으로 저장.
+  estimation_period_start/end 는 estimation_start/end 로 저장 (YYYY-MM 을 DATE 로 변환).
 
-subperiod_id NULL UPSERT: ON CONFLICT 미지원 → DELETE + INSERT.
+subperiod_id NULL UPSERT: ON CONFLICT 미지원이므로 DELETE 후 INSERT.
 """
 from __future__ import annotations
 
@@ -55,7 +56,7 @@ async def _upsert_model_params(
             estimation_end = normalize_yyyymm_to_date(str(raw_end))
             validate_period_day(estimation_end, "model_params")
 
-        # NULL은 UNIQUE 충돌 미탐지 → DELETE + INSERT
+        # NULL은 UNIQUE 충돌 미탐지이므로 DELETE 후 INSERT
         await session.execute(
             text("""
                 DELETE FROM model_params
@@ -235,7 +236,7 @@ async def load_phase4(
     session: AsyncSession,
     run_id: int,
 ) -> dict[str, int]:
-    """Phase 4 단일 트랜잭션 — model_params, irf_data, baselines 적재."""
+    """Phase 4 단일 트랜잭션으로 model_params, irf_data, baselines 적재."""
     try:
         mp_count = await _upsert_model_params(session, run_id)
         irf_count = await _upsert_irf_data(session, run_id)
@@ -248,7 +249,7 @@ async def load_phase4(
         await session.rollback()
         raise DBError(
             "DB-TX-001",
-            "Phase 4 트랜잭션 롤백 — model_params/irf_data/baselines 적재 실패",
+            "Phase 4 트랜잭션 롤백: model_params/irf_data/baselines 적재 실패",
             {"run_id": run_id, "error": str(e)},
         ) from e
 

@@ -1,5 +1,5 @@
 """
-Phase 7 통합 — phase7_summary.csv + stat_timeseries CSV 생성
+Phase 7 통합. phase7_summary.csv 및 stat_timeseries CSV 생성
 
 입력: phase1/4/6/7 패턴 결과, product_config, model_routing
 출력:

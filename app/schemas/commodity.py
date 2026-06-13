@@ -1,4 +1,4 @@
-"""Pydantic DTO — /commodities, /commodities/{id}, /segments 응답."""
+"""Pydantic DTO. /commodities, /commodities/{id}, /segments 응답."""
 from __future__ import annotations
 
 from datetime import date
@@ -16,7 +16,7 @@ def _date_to_yyyymm(d: date | str | None) -> str | None:
 
 
 class CommoditySummary(BaseModel):
-    """GET /commodities 응답 — 품목 목록 단일 항목."""
+    """GET /commodities 응답. 품목 목록 단일 항목."""
     model_config = {"populate_by_name": True, "from_attributes": True}
 
     commodity_id: str
@@ -59,12 +59,12 @@ class SegmentMeta(BaseModel):
 
 
 class CommodityDetail(CommoditySummary):
-    """GET /commodities/{id} 응답 — 단일 품목 상세."""
+    """GET /commodities/{id} 응답. 단일 품목 상세."""
     segment_meta: dict[str, SegmentMeta] = {}
 
 
 class SegmentItem(BaseModel):
-    """GET /segments 응답 — 단일 구간 항목."""
+    """GET /segments 응답. 단일 구간 항목."""
     model_config = {"populate_by_name": True, "from_attributes": True}
 
     segment_id: str

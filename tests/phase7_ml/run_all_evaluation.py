@@ -1,4 +1,4 @@
-"""5축 ML 신뢰성 평가 통합 실행 — 타임스탬프 디렉토리에 축별 CSV + 메타 JSON 저장.
+"""5축 ML 신뢰성 평가 통합 실행. 타임스탬프 디렉토리에 축별 CSV와 메타 JSON을 저장한다.
 
 입력: Phase 7-ML 출력 + Phase 7 stat 출력 + product_config
 출력: tests/phase7_ml/results/run_{timestamp}/ 아래 축별 CSV + run_meta.json + latest/ 복사본
@@ -69,7 +69,7 @@ def run_all(data_dir, ml_dir, phase7_dir, results_base, memo=""):
     output.mkdir(parents=True, exist_ok=True)
 
     log_eval("=" * 60)
-    log_eval(f"ML 신뢰성 평가 시작 (5축) — {run_id}")
+    log_eval(f"ML 신뢰성 평가 시작 (5축): {run_id}")
     if memo:
         log_eval(f"메모: {memo}")
     log_eval("=" * 60)

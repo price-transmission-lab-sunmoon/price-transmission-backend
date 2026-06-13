@@ -1,4 +1,4 @@
-"""스트림 그래프·미니맵 비즈니스 로직.
+"""스트림 그래프, 미니맵 비즈니스 로직.
 
 엔드포인트: GET /commodities/{id}/stream
             GET /commodities/{id}/stream/minimap
@@ -28,7 +28,7 @@ from app.services.aggregation import aggregate_by_granularity, build_anomaly_den
 
 
 def _parse_yyyymm(value: str, field: str) -> date:
-    """YYYY-MM → date. 스트림 도메인 코드(API-STR-002) 고정."""
+    """YYYY-MM을 date로 변환. 스트림 도메인 코드(API-STR-002) 고정."""
     return parse_yyyymm(value, field, code="API-STR-002")
 
 
@@ -41,9 +41,9 @@ def _clamp_range(
 ) -> tuple[date, date]:
     """날짜 범위 클램핑.
 
-    - from_ > to_ → API-STR-002 (INVALID_DATE_RANGE)
-    - 완전 이탈   → API-STR-003 (INVALID_DATE_RANGE)
-    - 부분 이탈   → 클램핑 후 반환
+    - from_ > to_ 이면 API-STR-002 (INVALID_DATE_RANGE)
+    - 완전 이탈 시 API-STR-003 (INVALID_DATE_RANGE)
+    - 부분 이탈 시 클램핑 후 반환
     """
     if from_ > to_:
         raise APIError(
@@ -125,7 +125,7 @@ async def get_stream(
         requested_from, requested_to, analysis_start, analysis_end, commodity_id
     )
 
-    # 4. 등급·패턴 필터 파싱
+    # 4. 등급, 패턴 필터 파싱
     grade_filter = [g.strip() for g in grade_str.split(",") if g.strip()]
     pattern_filter = [p.strip() for p in patterns_str.split(",") if p.strip()]
 
@@ -153,7 +153,7 @@ async def get_stream(
             public_code="INTERNAL_ERROR",
         ) from e
 
-    # 6. 이상 노드 조회 (anomaly_results — 항상 월 단위)
+    # 6. 이상 노드 조회 (anomaly_results. 항상 월 단위)
     try:
         anomaly_result = await db.execute(
             select(AnomalyResult)
@@ -179,7 +179,7 @@ async def get_stream(
             public_code="INTERNAL_ERROR",
         ) from e
 
-    # 7. 이상 노드 인덱스 구성: (segment_id, period) → anomaly_id 목록
+    # 7. 이상 노드 인덱스 구성: (segment_id, period) 키로 anomaly_id 목록 매핑
     anomaly_index: dict[tuple[str, date], list[int]] = defaultdict(list)
     for ar in anomaly_rows:
         anomaly_index[(ar.segment_id, ar.period)].append(ar.id)
@@ -284,7 +284,7 @@ async def get_stream_minimap(
     commodity_segments: list[str],
     segments_str: str | None,
 ) -> StreamMinimapResponse:
-    """스트림 미니맵 — 전체 기간 yearly 고정 + mv_anomaly_density_yearly."""
+    """스트림 미니맵. 전체 기간 yearly 고정, mv_anomaly_density_yearly 포함."""
     # 구간 필터 파싱 및 검증 (API-SEG-001)
     segments_filter: list[str] = (
         [s.strip() for s in segments_str.split(",") if s.strip()]
@@ -353,7 +353,7 @@ async def get_stream_minimap(
             public_code="INTERNAL_ERROR",
         ) from e
 
-    # 이상 노드 인덱스 (미니맵용 — 이상 정보는 anomaly_density로 대체)
+    # 이상 노드 인덱스 (미니맵용. 이상 정보는 anomaly_density로 대체)
     seg_monthly: dict[str, list[dict]] = defaultdict(list)
     for row in ts_rows:
         seg_monthly[row.segment_id].append({

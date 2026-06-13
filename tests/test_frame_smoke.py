@@ -1,4 +1,4 @@
-"""Frame 단계 smoke test — DB/Redis 없이 더미 응답 기준으로 동작 검증."""
+"""Frame 단계 smoke test. DB/Redis 없이 더미 응답 기준으로 동작을 검증한다."""
 from __future__ import annotations
 
 import json
@@ -42,7 +42,7 @@ ALLOWED_ROUTE_TYPES = {"3seg", "4seg"}
 
 @pytest.mark.asyncio
 async def test_commodities_dummy():
-    """/commodities 10개 품목 배열 + 필드·Literal 값 검증."""
+    """/commodities 10개 품목 배열과 필드, Literal 값을 검증한다."""
     items = [
         CommoditySummary(
             commodity_id=c["commodity_id"],
@@ -83,7 +83,7 @@ async def test_commodities_dummy():
 
 @pytest.mark.asyncio
 async def test_period_validator():
-    """YYYY-MM validator — 잘못된 형식 입력 시 예외 발생 확인."""
+    """YYYY-MM validator. 잘못된 형식 입력 시 예외가 발생해야 한다."""
     import pydantic
 
     from app.schemas.timeseries import TimeseriesEnvelope

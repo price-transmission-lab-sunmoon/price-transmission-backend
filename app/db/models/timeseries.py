@@ -1,4 +1,4 @@
-"""ORM 모델 — stat_timeseries, raw_prices, mv_anomaly_density_yearly."""
+"""ORM 모델: stat_timeseries, raw_prices, mv_anomaly_density_yearly."""
 from sqlalchemy import (
     TIMESTAMP,
     Boolean,

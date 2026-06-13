@@ -63,9 +63,9 @@ def build_compare_banner(meta_current, meta_previous):
     sp = meta_previous.get("summary", {})
     def delta_html(key, fmt=".4f", higher_is_better=True):
         vc, vp = sc.get(key), sp.get(key)
-        if vc is None or vp is None: return '<span style="color:var(--text-muted)">—</span>'
+        if vc is None or vp is None: return '<span style="color:var(--text-muted)">N/A</span>'
         d = vc - vp
-        if abs(d) < 0.0001: return '<span style="color:var(--text-muted)">±0</span>'
+        if abs(d) < 0.0001: return '<span style="color:var(--text-muted)">0</span>'
         color = "var(--grade-good)" if (d > 0) == higher_is_better else "var(--grade-weak)"
         sign = "+" if d > 0 else ""
         return f'<span style="color:{color};font-weight:700">{sign}{d:{fmt}}</span>'
@@ -73,7 +73,7 @@ def build_compare_banner(meta_current, meta_previous):
             ("AUC (Ensemble)",delta_html("avg_auc_ensemble")),("Contamination SR",delta_html("avg_contam_sr")),
             ("Cross-Track Agreement",delta_html("avg_cta"))]
     cells = "".join(f'<div style="text-align:center"><div style="font-size:11px;color:var(--text-muted)">{n}</div><div style="font-size:18px;margin-top:4px">{v}</div></div>' for n, v in rows)
-    return f'<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:32px"><div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;font-family:\'JetBrains Mono\',monospace">vs {meta_previous.get("run_id","?")} — {meta_previous.get("memo","")}</div><div style="display:grid;grid-template-columns:repeat(5,1fr);gap:16px">{cells}</div></div>'
+    return f'<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:32px"><div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;font-family:\'JetBrains Mono\',monospace">vs {meta_previous.get("run_id","?")} ({meta_previous.get("memo","")})</div><div style="display:grid;grid-template-columns:repeat(5,1fr);gap:16px">{cells}</div></div>'
 
 
 def generate_html(data, compare_data=None):
@@ -100,7 +100,7 @@ def generate_html(data, compare_data=None):
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Phase 7-ML 5-Axis Reliability Report — {run_id}</title>
+<title>Phase 7-ML 5-Axis Reliability Report: {run_id}</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
@@ -169,13 +169,13 @@ table.eval td:first-child {{ text-align:left; font-weight:500; color:var(--text-
   {compare_banner}
   <div class="summary-row" id="summaryCards"></div>
 
-  <div class="section"><div class="section-header"><span class="section-number">AXIS 1</span><span class="section-title">External Shock Recall (ESR)</span><span class="section-desc">≥1 detection within shock window → recovered</span></div>
+  <div class="section"><div class="section-header"><span class="section-number">AXIS 1</span><span class="section-title">External Shock Recall (ESR)</span><span class="section-desc">1 or more detections within shock window: recovered</span></div>
     <div class="chart-grid">
       <div class="chart-card"><h3>Ensemble External Shock Recall by Commodity × Segment</h3><div class="chart-container wide"><canvas id="esr_line"></canvas></div></div>
       <div class="chart-card"><h3>Model-wise External Shock Recall</h3><div class="chart-container wide"><canvas id="esr_model"></canvas></div></div>
     </div></div>
 
-  <div class="section"><div class="section-header"><span class="section-number">AXIS 2</span><span class="section-title">Anomaly Score Separation Ratio</span><span class="section-desc">SR &gt; 2.0 Good · 1.0~2.0 Moderate · &lt;1.0 Weak</span></div>
+  <div class="section"><div class="section-header"><span class="section-number">AXIS 2</span><span class="section-title">Anomaly Score Separation Ratio</span><span class="section-desc">SR &gt; 2.0 Good, 1.0~2.0 Moderate, &lt;1.0 Weak</span></div>
     <div class="chart-grid">
       <div class="chart-card"><h3>Separation Ratio by Model</h3><div class="chart-container wide"><canvas id="sr_line"></canvas></div></div>
       <div class="chart-card"><h3>Separation Ratio Detail</h3><div id="sr_table"></div></div>
@@ -190,7 +190,7 @@ table.eval td:first-child {{ text-align:left; font-weight:500; color:var(--text-
       <div class="chart-card"><h3>AUC / MAE / MSE Detail</h3><div id="auc_table"></div></div>
     </div></div>
 
-  <div class="section"><div class="section-header"><span class="section-number">AXIS 4</span><span class="section-title">Hyperparameter Sensitivity (Stability Ratio)</span><span class="section-desc">SR ≥ 0.80 Robust · 0.60~0.80 Moderate</span></div>
+  <div class="section"><div class="section-header"><span class="section-number">AXIS 4</span><span class="section-title">Hyperparameter Sensitivity (Stability Ratio)</span><span class="section-desc">SR 0.80 이상 Robust, 0.60~0.80 Moderate</span></div>
     <div class="chart-grid">
       <div class="chart-card"><h3>Stability Ratio: Contamination vs LOF k-value</h3><div class="chart-container wide"><canvas id="sens_line"></canvas></div></div>
       <div class="chart-card"><h3>Sensitivity Detail</h3><div id="sens_table"></div></div>
@@ -227,10 +227,10 @@ const C={{if:'#3b82f6',lof:'#06b6d4',svm:'#8b5cf6',ens:'#10b981',contam:'#f59e0b
 function lds(label,data,color,dash){{return{{label,data,borderColor:color,backgroundColor:color+'33',tension:0.3,pointRadius:3,pointHoverRadius:6,borderWidth:2,fill:false,borderDash:dash||[]}};}}
 function bds(label,data,color){{return{{label,data,backgroundColor:color+'99',borderColor:color,borderWidth:1,borderRadius:3,barPercentage:0.8}};}}
 
-function gradeText(v,t,l){{if(v===null||isNaN(v))return['—','grade-moderate'];if(v>=t[0])return[l[0],'grade-good'];if(v>=t[1])return[l[1],'grade-moderate'];return[l[2],'grade-weak'];}}
+function gradeText(v,t,l){{if(v===null||isNaN(v))return['N/A','grade-moderate'];if(v>=t[0])return[l[0],'grade-good'];if(v>=t[1])return[l[1],'grade-moderate'];return[l[2],'grade-weak'];}}
 
 function hlCell(val,all,dec,hb=true){{
-  if(val===null||isNaN(val))return'<span class="hl hl-na">—</span>';
+  if(val===null||isNaN(val))return'<span class="hl hl-na">N/A</span>';
   const vl=all.filter(v=>v!==null&&!isNaN(v));if(!vl.length)return'<span class="hl">'+val.toFixed(dec)+'</span>';
   const best=hb?Math.max(...vl):Math.min(...vl);const worst=hb?Math.min(...vl):Math.max(...vl);
   let cls='';if(Math.abs(val-best)<1e-8)cls='hl-best';else if(Math.abs(val-worst)<1e-8)cls='hl-worst';
@@ -325,11 +325,11 @@ new Chart(document.getElementById('radar_all'),{{type:'radar',data:{{labels:['Ex
 
 // Verdict
 const vd=[
-  {{a:'Axis 1 — External Shock Recall',v:wESR.toFixed(3),i:wESR>=0.7?'Good':'Moderate — unsupervised baseline',g:wESR>=0.7?'grade-good':'grade-moderate'}},
-  {{a:'Axis 2 — Separation Ratio',v:'IF='+avg(axis2.map(d=>d.sr_if)).toFixed(2)+' / LOF='+avg(axis2.map(d=>d.sr_lof)).toFixed(2)+' / SVM='+avg(axis2.map(d=>d.sr_svm)).toFixed(2),i:aSR>=2?'All models SR > 2.0':'Partial below 2.0',g:aSR>=2?'grade-good':'grade-moderate'}},
-  {{a:'Axis 3 — AUC / MAE / MSE',v:'AUC='+aAUC.toFixed(3)+', MAE='+(1-aAUC).toFixed(3),i:aAUC>=0.7?'Ideal range':'Independence secured',g:aAUC>=0.7?'grade-good':'grade-moderate'}},
-  {{a:'Axis 4 — Stability Ratio',v:'Contam='+aCS.toFixed(3)+' / k='+aKS.toFixed(3),i:'k robust ('+aKS.toFixed(2)+'), contam moderate ('+aCS.toFixed(2)+')',g:aSens>=0.8?'grade-good':'grade-moderate'}},
-  {{a:'Axis 5 — Consensus',v:'CTA='+aCTA.toFixed(3),i:'Hypothesis holds: '+axis5.filter(d=>d.hypothesis_holds===true).length+'/'+axis5.filter(d=>d.hypothesis_holds!==null).length,g:aCTA>=0.3?'grade-good':aCTA>=0.15?'grade-moderate':'grade-weak'}},
+  {{a:'Axis 1: External Shock Recall',v:wESR.toFixed(3),i:wESR>=0.7?'Good':'Moderate (unsupervised baseline)',g:wESR>=0.7?'grade-good':'grade-moderate'}},
+  {{a:'Axis 2: Separation Ratio',v:'IF='+avg(axis2.map(d=>d.sr_if)).toFixed(2)+' / LOF='+avg(axis2.map(d=>d.sr_lof)).toFixed(2)+' / SVM='+avg(axis2.map(d=>d.sr_svm)).toFixed(2),i:aSR>=2?'All models SR > 2.0':'Partial below 2.0',g:aSR>=2?'grade-good':'grade-moderate'}},
+  {{a:'Axis 3: AUC / MAE / MSE',v:'AUC='+aAUC.toFixed(3)+', MAE='+(1-aAUC).toFixed(3),i:aAUC>=0.7?'Ideal range':'Independence secured',g:aAUC>=0.7?'grade-good':'grade-moderate'}},
+  {{a:'Axis 4: Stability Ratio',v:'Contam='+aCS.toFixed(3)+' / k='+aKS.toFixed(3),i:'k robust ('+aKS.toFixed(2)+'), contam moderate ('+aCS.toFixed(2)+')',g:aSens>=0.8?'grade-good':'grade-moderate'}},
+  {{a:'Axis 5: Consensus',v:'CTA='+aCTA.toFixed(3),i:'Hypothesis holds: '+axis5.filter(d=>d.hypothesis_holds===true).length+'/'+axis5.filter(d=>d.hypothesis_holds!==null).length,g:aCTA>=0.3?'grade-good':aCTA>=0.15?'grade-moderate':'grade-weak'}},
 ];
 let vH='<table class="eval"><thead><tr><th>Axis</th><th>Key Value</th><th>Interpretation</th><th>Verdict</th></tr></thead><tbody>';
 vd.forEach(v=>{{const lb=v.g==='grade-good'?'Good':v.g==='grade-moderate'?'Moderate':'Needs Work';vH+=`<tr><td style="font-size:11px">${{v.a}}</td><td>${{v.v}}</td><td style="color:var(--text-secondary);font-size:11px">${{v.i}}</td><td><span class="grade ${{v.g}}" style="font-size:11px">${{lb}}</span></td></tr>`;}});

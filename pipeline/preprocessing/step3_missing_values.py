@@ -83,7 +83,7 @@ def check_missing_values():
 
         cp_row = common_periods[common_periods["commodity_id"] == cid]
         if cp_row.empty or cp_row.iloc[0]["common_months"] == 0:
-            print(f"  {name_kr:<12} — 공통 기간 없음, 건너뜀")
+            print(f"  {name_kr:<12} 공통 기간 없음, 건너뜀")
             continue
 
         start = cp_row.iloc[0]["common_start"]
@@ -199,14 +199,14 @@ def check_missing_values():
     if excluded_items:
         print(f"\n  ❌ 결측률 10% 이상 (분석 제외 대상):")
         for item in excluded_items:
-            print(f"    {item['name_kr']} / {item['source']} — {item['missing_rate']:.1f}%")
+            print(f"    {item['name_kr']} / {item['source']}: {item['missing_rate']:.1f}%")
     else:
         print(f"\n  ✅ 결측률 10% 이상 품목 없음")
 
     if flagged_gaps:
         print(f"\n  ⚠️ 연속 결측 3개월 이상 구간:")
         for gap in flagged_gaps:
-            print(f"    {gap['name_kr']} / {gap['source']} — {gap['gap_start']}~{gap['gap_end']} ({gap['gap_months']}개월)")
+            print(f"    {gap['name_kr']} / {gap['source']}: {gap['gap_start']}~{gap['gap_end']} ({gap['gap_months']}개월)")
     else:
         print(f"\n  ✅ 연속 결측 3개월 이상 구간 없음")
 

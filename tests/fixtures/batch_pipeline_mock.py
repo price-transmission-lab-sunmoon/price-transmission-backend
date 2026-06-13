@@ -1,4 +1,4 @@
-"""배치 파이프라인 더미 픽스처 — 배치 흐름만 테스트하기 위한 Phase 실행 대체."""
+"""배치 파이프라인 더미 픽스처. 배치 흐름만 테스트하기 위한 Phase 실행 대체."""
 from __future__ import annotations
 
 import logging

@@ -26,7 +26,7 @@ _CACHE_CONTROL = "public, max-age=86400"
 
 
 def _check_etag(request: Request, etag: str) -> Response | None:
-    """If-None-Match 헤더 비교 — 일치 시 304, 불일치 시 None 반환."""
+    """If-None-Match 헤더 비교. 일치 시 304, 불일치 시 None 반환."""
     client_etag = request.headers.get("if-none-match", "")
     quoted = f'"{etag}"'
     if client_etag and (client_etag == quoted or client_etag == etag):
@@ -43,7 +43,7 @@ def _body_etag(body: dict) -> str:
 
 @router.get("/meta/config", response_model=MetaConfigResponse)
 async def get_meta_config() -> MetaConfigResponse:
-    """서버 상태 헬스체크 — DB/Redis 연결 여부 포함."""
+    """서버 상태 헬스체크. DB/Redis 연결 여부 포함."""
     from app.db.session import engine
     db_status: str
     try:
@@ -67,7 +67,7 @@ async def get_meta_config() -> MetaConfigResponse:
 async def get_freshness(
     db: AsyncSession = Depends(get_db),
 ) -> JSONResponse:
-    """데이터 기준 시점 — data_freshness 테이블 실 DB 조회."""
+    """데이터 기준 시점. data_freshness 테이블 실 DB 조회."""
     response = await ref_svc.get_freshness(db)
     return JSONResponse(content=response.model_dump())
 
@@ -77,7 +77,7 @@ async def get_events(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> JSONResponse | Response:
-    """외부 충격 이벤트 목록 — ETag + Cache-Control + If-None-Match 304 처리."""
+    """외부 충격 이벤트 목록. ETag, Cache-Control, If-None-Match 304 처리."""
     response, etag = await ref_svc.get_events(db)
 
     not_modified = _check_etag(request, etag)
@@ -95,7 +95,7 @@ async def get_segments(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> JSONResponse | Response:
-    """분析 구간 정의 목록 — ETag + Cache-Control + If-None-Match 304 처리."""
+    """분析 구간 정의 목록. ETag, Cache-Control, If-None-Match 304 처리."""
     response, etag = await ref_svc.get_segments(db)
 
     not_modified = _check_etag(request, etag)
@@ -110,7 +110,7 @@ async def get_segments(
 
 @router.get("/meta/pipeline", response_model=MetaPipelineResponse)
 async def get_meta_pipeline(request: Request) -> MetaPipelineResponse | Response:
-    """파이프라인 플로우 — 정적 데이터 + ETag + If-None-Match 304 처리."""
+    """파이프라인 플로우. 정적 데이터, ETag, If-None-Match 304 처리."""
     body = MetaPipelineResponse(
         version=settings.pipeline_spec_version,
         nodes=[
@@ -158,7 +158,7 @@ async def get_meta_pipeline(request: Request) -> MetaPipelineResponse | Response
 
 @router.post("/admin/batch/trigger", status_code=202, response_model=BatchTriggerResponse)
 async def trigger_batch() -> BatchTriggerResponse:
-    """개발용 수동 배치 트리거 — 비동기 실행 후 즉시 202 반환."""
+    """개발용 수동 배치 트리거. 비동기 실행 후 즉시 202 반환."""
     from app.services.batch import _execute_phases, start_batch
 
     resp = await start_batch()
@@ -185,7 +185,7 @@ async def trigger_batch() -> BatchTriggerResponse:
 
 @router.get("/meta/analysis-params", response_model=MetaAnalysisParamsResponse)
 async def get_meta_analysis_params(request: Request) -> MetaAnalysisParamsResponse | Response:
-    """파이프라인 파라미터 기준값 — 정적 데이터 + ETag + If-None-Match 304 처리."""
+    """파이프라인 파라미터 기준값. 정적 데이터, ETag, If-None-Match 304 처리."""
     body = MetaAnalysisParamsResponse(
         version=settings.pipeline_spec_version,
         params={

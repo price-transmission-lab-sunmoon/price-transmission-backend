@@ -1,4 +1,4 @@
-"""Step 4: 품목별 소스(국제가·수입단가·PPI·CPI·도매가) 통합 + 결측 보간."""
+"""Step 4: 품목별 소스(국제가, 수입단가, PPI, CPI, 도매가) 통합 및 결측 보간."""
 
 import json
 import pandas as pd
@@ -143,7 +143,7 @@ def merge_all_datasets():
         merged = merge_single_commodity(cid, commodity, sources)
 
         if merged.empty:
-            print(f"  {name_kr:<12} — 건너뜀 (공통 기간 없음)")
+            print(f"  {name_kr:<12} 건너뜀 (공통 기간 없음)")
             continue
 
         item_path = MERGED_DIR / f"{cid}.csv"

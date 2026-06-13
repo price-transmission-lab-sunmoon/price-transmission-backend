@@ -1,4 +1,4 @@
-"""Step 5: 품목별 분석 메타데이터(공통 기간·구간 페어) → product_config.json 생성."""
+"""Step 5: 품목별 분석 메타데이터(공통 기간, 구간 페어)를 수집해 product_config.json을 생성한다."""
 
 import json
 import pandas as pd
@@ -87,15 +87,15 @@ def generate_product_config():
     for cid, cfg in config.items():
         segments_str = ", ".join(cfg["segments"])
         period_str = f"{cfg['common_start']}~{cfg['common_end']}"
-        wholesale_str = "✅" if cfg["has_wholesale"] else "—"
+        wholesale_str = "✅" if cfg["has_wholesale"] else "없음"
         print(f"  {cfg['name_kr']:<12} {segments_str:<18} {period_str:<25} {cfg['common_months']:>5} {wholesale_str}")
 
     b2b = [cid for cid, cfg in config.items() if not cfg["has_wholesale"]]
     wholesale = [cid for cid, cfg in config.items() if cfg["has_wholesale"]]
 
     print(f"\n  📋 품목 그룹 요약:")
-    print(f"    B2B 직납형 (A→B→D′): {len(b2b)}개 — {', '.join(b2b)}")
-    print(f"    도매 경유  (A→B→C→D): {len(wholesale)}개 — {', '.join(wholesale)}")
+    print(f"    B2B 직납형 (A-B-D 구간): {len(b2b)}개 - {', '.join(b2b)}")
+    print(f"    도매 경유  (A-B-C-D 구간): {len(wholesale)}개 - {', '.join(wholesale)}")
 
     return config
 

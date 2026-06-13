@@ -1,5 +1,5 @@
 """
-Phase 1 — STL 계절 조정 및 전월 대비 변화율 산출.
+Phase 1. STL 계절 조정 및 전월 대비 변화율 산출.
 
 입력:
     data/processed/merged/{commodity_id}.csv
@@ -32,7 +32,7 @@ CHANGES_DIR = os.path.join(PHASE1_DIR, "changes")
 STL_DIR = os.path.join(PHASE1_DIR, "stl_components")
 ROBUST_DIR = os.path.join(PHASE1_DIR, "robustness")
 
-STL_PERIOD = 12          # 월별 데이터 → 12개월 주기
+STL_PERIOD = 12          # 월별 데이터 기준 12개월 주기
 STL_ROBUST = True        # 이상치 강건 추정
 
 PRICE_COLS_BASE = ["intl_price_krw", "import_price_usd", "ppi", "cpi"]
@@ -99,7 +99,7 @@ def process_stl_commodity(df: pd.DataFrame, analysis_cols: list) -> tuple:
 
 
 def compute_pct_change(sa_df: pd.DataFrame) -> pd.DataFrame:
-    """계절 조정 시계열에서 전월 대비 변화율(%) 산출. 컬럼명 _sa → _pct."""
+    """계절 조정 시계열에서 전월 대비 변화율(%) 산출. 컬럼명 접미사를 _sa에서 _pct로 변경."""
     pct_df = sa_df.pct_change() * 100
     rename_map = {c: c.replace("_sa", "_pct") for c in pct_df.columns}
     pct_df = pct_df.rename(columns=rename_map)
@@ -163,7 +163,7 @@ def run_phase1(merged_dir: str = MERGED_DIR,
     summary_rows = []
 
     print("=" * 60)
-    print("Phase 1 — 계절 조정 (Seasonal Adjustment)")
+    print("Phase 1. 계절 조정 (Seasonal Adjustment)")
     print("=" * 60)
 
     for commodity_id, cfg in config.items():

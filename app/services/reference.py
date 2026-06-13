@@ -30,7 +30,7 @@ _events_etag: str | None = None
 
 
 def _route_type_to_segments(route_type: str) -> list[str]:
-    """route_type → segment 목록 반환."""
+    """route_type에 해당하는 segment 목록 반환."""
     if route_type == "3seg":
         return ["A", "B", "D_prime"]
     return ["A", "B", "C", "D"]
@@ -43,7 +43,7 @@ def _compute_etag(data: object) -> str:
 
 
 async def get_commodities(db: AsyncSession) -> CommodityListResponse:
-    """commodities 테이블 전체 조회 — GET /commodities."""
+    """commodities 테이블 전체 조회. GET /commodities."""
     result = await db.execute(select(Commodity).order_by(Commodity.id))
     rows = result.scalars().all()
 
@@ -83,14 +83,14 @@ async def get_commodities(db: AsyncSession) -> CommodityListResponse:
                     "value": f"{row.cluster}/{row.route_type}",
                     "allowed_values": "grain|oil_sugar|tropical|livestock|independent / 3seg|4seg",
                 },
-                boundary="DB→API",
+                boundary="DB에서 API 경계",
             ) from e
 
     return CommodityListResponse(commodities=items)
 
 
 async def get_commodity_detail(db: AsyncSession, commodity_id: str) -> CommodityDetail:
-    """단일 품목 상세 조회 + segment_meta — GET /commodities/{id}."""
+    """단일 품목 상세 조회 및 segment_meta. GET /commodities/{id}."""
     result = await db.execute(
         select(Commodity).where(Commodity.commodity_id == commodity_id)
     )
@@ -154,7 +154,7 @@ async def get_commodity_detail(db: AsyncSession, commodity_id: str) -> Commodity
                     "value": str(baseline.model_type),
                     "allowed_values": "VAR|VECM",
                 },
-                boundary="DB→API",
+                boundary="DB에서 API 경계",
             ) from e
 
     try:
@@ -177,12 +177,12 @@ async def get_commodity_detail(db: AsyncSession, commodity_id: str) -> Commodity
             "PARSE-ENUM-001",
             "commodities cluster/route_type Pydantic Literal 불일치",
             context={"table": "commodities", "column": "cluster/route_type"},
-            boundary="DB→API",
+            boundary="DB에서 API 경계",
         ) from e
 
 
 async def get_segments(db: AsyncSession) -> tuple[SegmentListResponse, str]:
-    """segments 전체 조회 + ETag 반환 — GET /segments."""
+    """segments 전체 조회 및 ETag 반환. GET /segments."""
     global _segments_etag
 
     result = await db.execute(select(Segment).order_by(Segment.id))
@@ -211,7 +211,7 @@ async def get_segments(db: AsyncSession) -> tuple[SegmentListResponse, str]:
 
 
 async def get_events(db: AsyncSession) -> tuple[EventListResponse, str]:
-    """external_events 전체 조회 + ETag 반환 — GET /events."""
+    """external_events 전체 조회 및 ETag 반환. GET /events."""
     global _events_etag
 
     result = await db.execute(select(ExternalEvent).order_by(ExternalEvent.id))
@@ -237,7 +237,7 @@ async def get_events(db: AsyncSession) -> tuple[EventListResponse, str]:
 
 
 async def get_freshness(db: AsyncSession) -> FreshnessResponse:
-    """data_freshness 최신 1행 조회 — GET /freshness."""
+    """data_freshness 최신 1행 조회. GET /freshness."""
     result = await db.execute(
         select(DataFreshness).order_by(DataFreshness.id.desc()).limit(1)
     )
@@ -269,5 +269,5 @@ async def get_freshness(db: AsyncSession) -> FreshnessResponse:
             "PARSE-DATE-001",
             "data_freshness 날짜 직렬화 실패",
             context={"table": "data_freshness", "column": "last_updated"},
-            boundary="DB→API",
+            boundary="DB에서 API 경계",
         ) from e

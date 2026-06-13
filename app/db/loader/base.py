@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 def _v(val):
-    """pandas NaN / None → Python None, 그 외 원형 반환."""
+    """pandas NaN 또는 None이면 Python None을 반환하고, 그 외는 원형을 반환한다."""
     if val is None:
         return None
     try:
@@ -28,7 +28,7 @@ def _v(val):
 
 
 def normalize_yyyymm_to_date(raw: str) -> date:
-    """'YYYY-MM' 문자열 → date(YYYY, MM, 1). 실패 시 DB-TYPE-001."""
+    """'YYYY-MM' 문자열을 date(YYYY, MM, 1)로 변환한다. 실패 시 DB-TYPE-001."""
     try:
         parts = raw.strip().split("-")
         if len(parts) != 2:
@@ -38,7 +38,7 @@ def normalize_yyyymm_to_date(raw: str) -> date:
     except Exception as e:
         raise DBError(
             "DB-TYPE-001",
-            f"period 변환 실패 — 월초(YYYY-MM-01) 아님: {raw!r}",
+            f"period 변환 실패: 월초(YYYY-MM-01) 형식 아님: {raw!r}",
             {"period_raw": raw},
         ) from e
 
@@ -78,7 +78,7 @@ async def create_pipeline_run(
         await session.rollback()
         raise DBError(
             "DB-RUN-001",
-            f"pipeline_runs 중복 생성 — run_date={run_date} 이미 존재",
+            f"pipeline_runs 중복 생성: run_date={run_date} 이미 존재",
             {"run_date": str(run_date)},
         ) from e
 
@@ -141,7 +141,7 @@ async def upsert_data_freshness(
 ) -> None:
     """data_freshness 최신 1개 행 유지 UPSERT.
 
-    UPDATE 우선 → rowcount=0이면 INSERT (UNIQUE 제약 없어 ON CONFLICT 불가).
+    UPDATE를 먼저 시도하고, rowcount=0이면 INSERT한다 (UNIQUE 제약 없어 ON CONFLICT 불가).
     """
     result = await session.execute(
         text(

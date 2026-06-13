@@ -1,4 +1,4 @@
-"""축 2 — 이상 점수 분리도(Separation Ratio) 산출."""
+"""축 2: 이상 점수 분리도(Separation Ratio) 산출."""
 
 import sys
 import os

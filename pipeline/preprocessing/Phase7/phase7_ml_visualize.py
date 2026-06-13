@@ -1,5 +1,5 @@
 """
-Phase 7-ML 결과 시각화 — 신뢰도 등급/교차 대조/타임라인/박스플롯 6종 차트.
+Phase 7-ML 결과 시각화. 신뢰도 등급, 교차 대조, 타임라인, 박스플롯 등 6종 차트를 생성한다.
 
 입력: phase7_ml/summary, predictions, cross_validation, confidence_grades
 출력: phase7_ml/figures/01~06_*.png

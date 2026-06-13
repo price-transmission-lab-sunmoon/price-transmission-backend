@@ -1,4 +1,4 @@
-"""Step 1: World Bank 달러 가격 × 월평균 환율 → 원화 환산 국제가(원/톤)."""
+"""Step 1: World Bank 달러 가격에 월평균 환율을 곱해 원화 환산 국제가(원/톤)를 산출한다."""
 
 import pandas as pd
 from pathlib import Path

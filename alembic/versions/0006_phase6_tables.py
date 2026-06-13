@@ -25,9 +25,9 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("commodity_id", sa.String(20), nullable=False),
         sa.Column("segment_id", sa.String(10), nullable=False),
-        # Bai-Perron 탐지 결과 — "YYYY-MM" → DATE "YYYY-MM-01" 월초 승격 후 적재
+        # Bai-Perron 탐지 결과. "YYYY-MM" 을 DATE "YYYY-MM-01" 월초로 승격 후 적재
         sa.Column("bp_dates", postgresql.ARRAY(sa.Date()), nullable=True),
-        # Chow Test 결과 — 고정 3개 시점
+        # Chow Test 결과. 고정 3개 시점
         sa.Column("chow_2008_f", sa.Numeric(10, 4), nullable=True),
         sa.Column("chow_2008_pvalue", sa.Numeric(8, 4), nullable=True),
         sa.Column("chow_2008_sig", sa.Boolean(), nullable=True),
@@ -61,7 +61,7 @@ def upgrade() -> None:
         sa.Column("commodity_id", sa.String(20), nullable=False),
         sa.Column("segment_id", sa.String(10), nullable=False),
         sa.Column("subperiod_index", sa.SmallInteger(), nullable=False),
-        # "YYYY-MM" → DATE "YYYY-MM-01" 월초 승격 후 적재
+        # "YYYY-MM" 을 DATE "YYYY-MM-01" 월초로 승격 후 적재
         sa.Column("period_start", sa.Date(), nullable=False),
         sa.Column("period_end", sa.Date(), nullable=False),
         sa.Column("n_obs", sa.Integer(), nullable=False),

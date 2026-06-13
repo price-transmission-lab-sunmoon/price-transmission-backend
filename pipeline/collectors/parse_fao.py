@@ -1,4 +1,4 @@
-"""FAO Food Price Index CSV → 품목군별 월별 지수 파서 (2014-2016=100)."""
+"""FAO Food Price Index CSV 파일을 파싱해 품목군별 월별 지수를 추출하는 파서 (2014-2016=100)."""
 
 import pandas as pd
 from pathlib import Path
@@ -62,7 +62,7 @@ def parse_fao_ffpi():
 
     print("\n  매칭된 품목군:")
     for orig, new in found_cols.items():
-        print(f"    '{orig}' → {new}")
+        print(f"    '{orig}' 컬럼을 {new}으로 매칭")
 
     for col in found_cols.keys():
         df[col] = pd.to_numeric(df[col], errors="coerce")

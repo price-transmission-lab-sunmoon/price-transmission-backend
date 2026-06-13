@@ -1,4 +1,4 @@
-"""World Bank Pink Sheet — 밀·옥수수·대두 월별 국제가격(USD) 수집."""
+"""World Bank Pink Sheet에서 밀, 옥수수, 대두 월별 국제가격(USD) 수집."""
 
 import os
 import sys
@@ -107,7 +107,7 @@ def parse_pink_sheet(excel_path):
     for cid, col_name in column_map.items():
         print(f"    {cid}: '{col_name}'")
     
-    # 정확 일치 → 부분 포함 → 키워드 순으로 컬럼 매칭
+    # 정확 일치, 부분 포함, 키워드 순으로 컬럼 매칭
     matched_columns = {}
     for cid, target_name in column_map.items():
         exact = [c for c in df.columns if c == target_name]
@@ -136,7 +136,7 @@ def parse_pink_sheet(excel_path):
 
     print("\n  매칭된 컬럼:")
     for cid, col in matched_columns.items():
-        print(f"    {cid} → '{col}'")
+        print(f"    {cid}: '{col}'")
     
     records = []
     for cid, col in matched_columns.items():

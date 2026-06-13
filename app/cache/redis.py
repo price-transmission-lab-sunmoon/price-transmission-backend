@@ -28,14 +28,14 @@ def get_redis_client() -> aioredis.Redis:
 
 
 async def ping_redis() -> bool:
-    """Redis 연결 확인 — 실패 시 경고만 출력하고 False 반환."""
+    """Redis 연결 확인. 실패 시 경고만 출력하고 False 반환."""
     try:
         client = get_redis_client()
         await client.ping()
         return True
     except Exception as e:
         logger.warning(
-            "Redis 연결 실패 — 캐시 없이 DB 직접 조회 (DB-CACHE-001)",
+            "Redis 연결 실패. 캐시 없이 DB 직접 조회 (DB-CACHE-001)",
             extra={"error_code": "DB-CACHE-001", "context": {"error": str(e)}},
         )
         return False
@@ -49,19 +49,19 @@ async def close_redis() -> None:
 
 
 def _redacted_redis_url() -> str:
-    """접속 URL에서 자격증명(user:pass@) 제거 — 로그 노출 방지."""
+    """접속 URL에서 자격증명(user:pass@) 제거. 로그 노출 방지."""
     url = settings.redis_url
     return url.split("@")[-1] if "@" in url else url
 
 
 async def cache_get(client: aioredis.Redis, key: str) -> dict | None:
-    """Redis에서 값을 읽어 dict로 반환. 연결 실패·역직렬화 오류 시 None 반환."""
+    """Redis에서 값을 읽어 dict로 반환. 연결 실패 또는 역직렬화 오류 시 None 반환."""
     try:
         raw: str | None = await client.get(key)
     except Exception as e:
         redis_url_redacted = _redacted_redis_url()
         logger.warning(
-            "Redis 연결 실패 — 캐시 없이 DB 직접 조회 (DB-CACHE-001)",
+            "Redis 연결 실패. 캐시 없이 DB 직접 조회 (DB-CACHE-001)",
             extra={
                 "error_code": "DB-CACHE-001",
                 "context": {
@@ -79,7 +79,7 @@ async def cache_get(client: aioredis.Redis, key: str) -> dict | None:
         return json.loads(raw)
     except (json.JSONDecodeError, ValueError):
         logger.warning(
-            "Redis 캐시 JSON 역직렬화 실패 — 해당 키 삭제 후 DB 재조회 (DB-CACHE-002)",
+            "Redis 캐시 JSON 역직렬화 실패. 해당 키 삭제 후 DB 재조회 (DB-CACHE-002)",
             extra={
                 "error_code": "DB-CACHE-002",
                 "context": {
@@ -96,13 +96,13 @@ async def cache_get(client: aioredis.Redis, key: str) -> dict | None:
 
 
 async def cache_set(client: aioredis.Redis, key: str, value: dict, ttl: int) -> None:
-    """Redis에 dict를 JSON 직렬화하여 TTL과 함께 저장 — 연결 실패 시 무시."""
+    """Redis에 dict를 JSON 직렬화하여 TTL과 함께 저장. 연결 실패 시 무시."""
     try:
         await client.set(key, json.dumps(value, ensure_ascii=False), ex=ttl)
     except Exception as e:
         redis_url_redacted = _redacted_redis_url()
         logger.warning(
-            "Redis 캐시 쓰기 실패 — 캐시 저장 생략 (DB-CACHE-001)",
+            "Redis 캐시 쓰기 실패. 캐시 저장 생략 (DB-CACHE-001)",
             extra={
                 "error_code": "DB-CACHE-001",
                 "context": {
@@ -174,7 +174,7 @@ async def cached_or_compute(
             return result
         except ValidationError as e:
             logger.warning(
-                "Redis 캐시값 Pydantic 검증 실패 — 캐시 무효화 후 DB 재조회 (PARSE-REDIS-001)",
+                "Redis 캐시값 Pydantic 검증 실패. 캐시 무효화 후 DB 재조회 (PARSE-REDIS-001)",
                 extra={
                     "error_code": "PARSE-REDIS-001",
                     "context": {"cache_key": cache_key, "error_msg": str(e)},

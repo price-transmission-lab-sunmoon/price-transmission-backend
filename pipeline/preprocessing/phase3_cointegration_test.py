@@ -1,5 +1,5 @@
 """
-Phase 3 — Johansen 공적분 검정으로 구간별 VAR/VECM 분기 결정.
+Phase 3. Johansen 공적분 검정으로 구간별 VAR/VECM 분기 결정.
 
 Trace + Max-Eigenvalue 병행; 충돌 시 Trace 우선(표본 크기에 강건).
 시차: AIC 기준 VAR 최적 시차 - 1 (범위 1~4).
@@ -83,16 +83,16 @@ def run_johansen_test(pair_data: pd.DataFrame, k_ar_diff: int) -> dict:
 
     if trace_reject_r0 and eigen_reject_r0:
         cointegrated = True
-        judgment_note = "Trace·Max-Eigen 모두 기각 → 공적분 확정"
+        judgment_note = "Trace, Max-Eigen 모두 기각. 공적분 확정"
     elif trace_reject_r0 and not eigen_reject_r0:
         cointegrated = True
-        judgment_note = "Trace만 기각 → Trace 우선 적용 (공적분)"
+        judgment_note = "Trace만 기각. Trace 우선 적용 (공적분)"
     elif not trace_reject_r0 and eigen_reject_r0:
         cointegrated = False
-        judgment_note = "Max-Eigen만 기각 → 보수적으로 공적분 없음"
+        judgment_note = "Max-Eigen만 기각. 보수적으로 공적분 없음"
     else:
         cointegrated = False
-        judgment_note = "둘 다 미기각 → 공적분 없음"
+        judgment_note = "둘 다 미기각. 공적분 없음"
 
     return {
         "trace_stat_r0": round(trace_stat_r0, 4),
@@ -138,7 +138,7 @@ def run_phase3(sa_dir: str = SA_DIR,
     model_selection = {}
 
     print("=" * 60)
-    print("Phase 3 — Johansen 공적분 검정")
+    print("Phase 3. Johansen 공적분 검정")
     print("=" * 60)
 
     for commodity_id, cfg in config.items():
@@ -208,7 +208,7 @@ def run_phase3(sa_dir: str = SA_DIR,
 
             icon = "✓" if johansen["cointegrated"] else "✗"
             flag_str = f"  {compat['flag']}" if compat["flag"] else ""
-            print(f"  구간 {segment:2s} ({upstream:>20s} → {downstream:<20s}) | "
+            print(f"  구간 {segment:2s} ({upstream:>20s} 에서 {downstream:<20s}) | "
                   f"{icon} {model:4s} | "
                   f"Trace={johansen['trace_stat_r0']} vs {johansen['trace_crit_r0']} | "
                   f"lag={johansen_lag}{flag_str}")

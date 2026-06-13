@@ -49,7 +49,7 @@ DB_URL = (
 
 
 def F(val):
-    """float NaN/Inf → None."""
+    """float NaN/Inf이면 None 반환."""
     if val is None:
         return None
     try:
@@ -62,14 +62,14 @@ def F(val):
 
 
 def I(val):
-    """int → None safe."""
+    """int 변환. 결측이면 None 반환."""
     if val is None or (isinstance(val, float) and pd.isna(val)):
         return None
     return int(val)
 
 
 def B(val):
-    """bool → None safe."""
+    """bool 변환. 결측이면 None 반환."""
     if val is None or (isinstance(val, float) and pd.isna(val)):
         return None
     if isinstance(val, str):
@@ -78,7 +78,7 @@ def B(val):
 
 
 def BF(val):
-    """bool → False fallback (*_anomaly 컬럼은 null 불허)."""
+    """bool 변환. 결측이면 False 반환 (*_anomaly 컬럼은 null 불허)."""
     res = B(val)
     return False if res is None else res
 
@@ -90,7 +90,7 @@ def S(val):
 
 
 def yyyymm_to_date(s):
-    """'YYYY-MM' 또는 'YYYY-MM-DD' → date 객체."""
+    """'YYYY-MM' 또는 'YYYY-MM-DD' 형식의 문자열을 date 객체로 변환."""
     if s is None or (isinstance(s, float) and pd.isna(s)):
         return None
     s = str(s).strip()
@@ -102,7 +102,7 @@ def yyyymm_to_date(s):
 
 
 def parse_bp_dates(val) -> list | None:
-    """phase6_summary.csv의 bp_dates 셀 (Python list 문자열) → [date, ...]"""
+    """phase6_summary.csv의 bp_dates 셀 (Python list 문자열)을 [date, ...] 형태로 파싱."""
     if val is None or (isinstance(val, float) and pd.isna(val)):
         return None
     s = str(val).strip()
@@ -126,7 +126,7 @@ async def latest_pipeline_run_id(conn: asyncpg.Connection) -> int | None:
 async def load_stationarity(conn, run_id):
     csv_path = PHASE2_DIR / "stationarity_results.csv"
     if not csv_path.exists():
-        print(f"  SKIP stationarity_results — {csv_path} 없음")
+        print(f"  SKIP stationarity_results: {csv_path} 없음")
         return 0
     df = pd.read_csv(csv_path, encoding="utf-8-sig")
     await conn.execute("DELETE FROM stationarity_results")
@@ -171,7 +171,7 @@ async def load_stationarity(conn, run_id):
 async def load_cointegration(conn, run_id):
     csv_path = PHASE3_DIR / "cointegration_results.csv"
     if not csv_path.exists():
-        print(f"  SKIP cointegration_results — {csv_path} 없음")
+        print(f"  SKIP cointegration_results: {csv_path} 없음")
         return 0
     df = pd.read_csv(csv_path, encoding="utf-8-sig")
     await conn.execute("DELETE FROM cointegration_results")
@@ -228,7 +228,7 @@ async def load_baselines(conn, run_id):
             continue
         rows.append((
             S(d["commodity_id"]), S(d["segment"]),
-            None,  # subperiod_id NULL → 전체 기간
+            None,  # subperiod_id NULL: 전체 기간
             I(d["normal_transmission_lag"]),
             F(d["transmission_elasticity"]),
             warmup_end, S(d["model_type"]),
@@ -340,7 +340,7 @@ async def load_irf_data(conn, run_id):
 async def load_granger(conn, run_id):
     csv_path = PHASE5_DIR / "granger_results.csv"
     if not csv_path.exists():
-        print(f"  SKIP granger_results — {csv_path} 없음")
+        print(f"  SKIP granger_results: {csv_path} 없음")
         return 0
     df = pd.read_csv(csv_path, encoding="utf-8-sig")
     await conn.execute("DELETE FROM granger_results")
@@ -470,7 +470,7 @@ async def load_asymmetry(conn, run_id):
                 run_id,
             ))
     if not rows:
-        print("  SKIP asymmetry_results — 파일 없음")
+        print("  SKIP asymmetry_results: 파일 없음")
         return 0
     await conn.executemany(
         """
@@ -490,13 +490,13 @@ async def load_asymmetry(conn, run_id):
 
 
 async def load_ml_scores(conn, run_id):
-    """predictions CSV → ml_scores 적재. segment 단위 percentile 산출 포함."""
+    """predictions CSV를 ml_scores에 적재. segment 단위 percentile 산출 포함."""
     pred_dir = PHASE7_ML_DIR / "predictions"
     files = sorted(pred_dir.glob("*_ml_predictions.csv"))
     await conn.execute("DELETE FROM ml_scores")
 
     if not files:
-        print("  SKIP ml_scores — predictions 폴더 비어있음")
+        print("  SKIP ml_scores: predictions 폴더 비어있음")
         return 0
 
     dfs = []
@@ -573,10 +573,10 @@ def _compute_2020_index(df: pd.DataFrame, value_col: str) -> pd.Series:
 
 async def load_raw_prices(conn, run_id):
     files = sorted(MERGED_DIR.glob("*.csv"))
-    # all_commodities.csv 제외 — 품목별 파일만 사용
+    # all_commodities.csv 제외, 품목별 파일만 사용
     files = [f for f in files if f.stem != "all_commodities"]
     if not files:
-        print(f"  SKIP raw_prices — {MERGED_DIR} 비어있음")
+        print(f"  SKIP raw_prices: {MERGED_DIR} 비어있음")
         return 0
     await conn.execute("DELETE FROM raw_prices")
     total = 0
@@ -628,7 +628,7 @@ async def load_raw_prices(conn, run_id):
 
 
 async def refresh_data_freshness(conn, run_id):
-    """baseline.json estimation_period_end 최대값 → data_freshness.data_up_to 갱신."""
+    """baseline.json estimation_period_end 최대값으로 data_freshness.data_up_to를 갱신."""
     max_end = None
     for f in (PHASE4_DIR / "baseline").glob("*_baseline.json"):
         d = json.loads(f.read_text(encoding="utf-8"))
@@ -636,7 +636,7 @@ async def refresh_data_freshness(conn, run_id):
         if end and (max_end is None or end > max_end):
             max_end = end
     if max_end is None:
-        print("  SKIP data_freshness — baseline.json에서 estimation_period_end 추출 실패")
+        print("  SKIP data_freshness: baseline.json에서 estimation_period_end 추출 실패")
         return None
 
     # 다음 실행일은 다음 달 1일로 가정
@@ -667,7 +667,7 @@ _MODEL_SCORE_MAP = [
 
 
 async def load_ml_projections(conn, run_id):
-    """features CSV → PCA(n=2) → ml_projections.
+    """features CSV를 PCA(n=2)로 축소해 ml_projections에 적재.
 
     회신 v2 §6 ③: (cid, seg, period) × 3 model_name = 3행. 좌표 동일.
     x_label="PC1", y_label="PC2" 고정. projection_method="pca".
@@ -681,12 +681,12 @@ async def load_ml_projections(conn, run_id):
     await conn.execute("DELETE FROM ml_projections")
 
     if not feat_dir.exists():
-        print("  SKIP ml_projections — features 폴더 없음")
+        print("  SKIP ml_projections: features 폴더 없음")
         return 0
 
     feat_files = sorted(feat_dir.glob("*_features.csv"))
     if not feat_files:
-        print("  SKIP ml_projections — features 폴더 비어있음")
+        print("  SKIP ml_projections: features 폴더 비어있음")
         return 0
 
     feats = []
@@ -731,7 +731,7 @@ async def load_ml_projections(conn, run_id):
             })
 
     if not proj_rows:
-        print("  SKIP ml_projections — 유효 관측치 없음")
+        print("  SKIP ml_projections: 유효 관측치 없음")
         return 0
 
     proj_df = pd.DataFrame(proj_rows)

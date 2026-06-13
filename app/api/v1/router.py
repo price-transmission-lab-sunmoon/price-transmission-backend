@@ -1,4 +1,4 @@
-"""APIRouter 통합 — prefix='/api/v1'."""
+"""APIRouter 통합. prefix='/api/v1'."""
 from fastapi import APIRouter
 
 from app.api.v1.endpoints import anomalies, commodities, meta

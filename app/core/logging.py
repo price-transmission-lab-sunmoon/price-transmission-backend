@@ -24,7 +24,7 @@ class _JsonFormatter(logging.Formatter):
 
 
 def setup_logging(log_level: str = "INFO") -> None:
-    # Windows cp949 터미널에서 한글·특수문자(em dash 등) 출력 시 UnicodeEncodeError 방지
+    # Windows cp949 터미널에서 한글, 특수문자(em dash 등) 출력 시 UnicodeEncodeError 방지
     utf8_stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True)
 
     handler = logging.StreamHandler(utf8_stdout)

@@ -1,4 +1,4 @@
-"""축 4 — 하이퍼파라미터 민감도(Stability Ratio) 산출."""
+"""축 4: 하이퍼파라미터 민감도(Stability Ratio) 산출."""
 
 import sys
 import os

@@ -1,5 +1,5 @@
 """
-Phase 7-ML — Isolation Forest, LOF, One-Class SVM 실행 + 앙상블 집계.
+Phase 7-ML. Isolation Forest, LOF, One-Class SVM 실행 후 앙상블 집계.
 
 파라미터: IF(n_estimators=100, contamination=0.08), LOF(n_neighbors=10), SVM(rbf, nu=0.08)
 """

@@ -1,13 +1,14 @@
-"""Phase 6 — breakpoints / subperiods 적재.
+"""Phase 6: breakpoints / subperiods 적재.
 
 JSON 필드명 매핑:
-  segment → segment_id
-  bai_perron_breakpoints → bp_dates DATE[]
-  chow_test_points["2008/2020/2022-01"] → chow_*_f / _pvalue / _sig
-  subperiods[].id/start/end/merged_with → subperiod_index / period_start / period_end / merged_with_index
+  segment 는 segment_id 로 저장.
+  bai_perron_breakpoints 는 bp_dates DATE[] 로 저장.
+  chow_test_points["2008/2020/2022-01"] 는 chow_*_f / _pvalue / _sig 로 저장.
+  subperiods[].id/start/end/merged_with 는
+    각각 subperiod_index / period_start / period_end / merged_with_index 로 저장.
 
 bp_dates 파싱 실패 시 DB-ARR-002 WARN 후 NULL 적재.
-bp_best_k / bic_scores 는 DB 미포함 → 적재 제외.
+bp_best_k / bic_scores 는 DB 미포함이므로 적재 제외.
 """
 from __future__ import annotations
 
@@ -30,7 +31,7 @@ _PHASE6_ROOT = Path(settings.pipeline_data_root) / "phase6"
 
 
 def _parse_bp_dates(raw_list: list[str], cid: str, seg: str) -> list[date] | None:
-    """'YYYY-MM' 배열 → DATE[] 월초 승격. 파싱 실패 시 WARN 후 None 반환."""
+    """'YYYY-MM' 배열을 DATE[] 월초 형식으로 변환한다. 파싱 실패 시 WARN 후 None 반환."""
     if not raw_list:
         return []
     parsed: list[date] = []
@@ -41,7 +42,7 @@ def _parse_bp_dates(raw_list: list[str], cid: str, seg: str) -> list[date] | Non
             parsed.append(d)
         except Exception as exc:
             logger.warning(
-                "DB-ARR-002 — bp_dates 파싱 실패, NULL 적재",
+                "DB-ARR-002: bp_dates 파싱 실패, NULL 적재",
                 extra={"commodity_id": cid, "segment_id": seg, "raw": raw, "error": str(exc)},
             )
             return None
@@ -63,7 +64,7 @@ async def load_phase6(
     session: AsyncSession,
     run_id: int,
 ) -> dict[str, int]:
-    """Phase 6 단일 트랜잭션 — breakpoints, subperiods 적재."""
+    """Phase 6 단일 트랜잭션: breakpoints, subperiods 적재."""
     bp_root = _PHASE6_ROOT / "breakpoints"
     files = sorted(bp_root.glob("*_breakpoints.json")) if bp_root.exists() else []
 
@@ -172,7 +173,7 @@ async def load_phase6(
             raise
         raise DBError(
             "DB-TX-001",
-            "Phase 6 트랜잭션 롤백 — breakpoints/subperiods 적재 실패",
+            "Phase 6 트랜잭션 롤백: breakpoints/subperiods 적재 실패",
             {"run_id": run_id, "error": str(e)},
         ) from e
 

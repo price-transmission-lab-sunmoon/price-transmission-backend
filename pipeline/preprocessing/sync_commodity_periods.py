@@ -1,4 +1,4 @@
-"""product_config.json → commodities.analysis_start/end DB 반영."""
+"""product_config.json을 읽어 commodities.analysis_start/end를 DB에 반영한다."""
 from __future__ import annotations
 
 import asyncio

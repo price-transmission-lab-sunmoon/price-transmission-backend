@@ -1,8 +1,8 @@
 """
-Phase 7 패턴 2 — 전이율 크기 이탈(Z-score+IQR) 및 비대칭 전달(로켓-깃털) 탐지.
+Phase 7 패턴 2. 전이율 크기 이탈(Z-score+IQR) 및 비대칭 전달(로켓-깃털) 탐지.
 
 Z-score 경보(>= 2.5) + IQR 이탈 동시 충족 시 flag. warmup 48개월 제외.
-비대칭 검정: 공적분 있음 → TECM, 없음 → 비대칭 VAR (Wald 검정).
+비대칭 검정: 공적분 있으면 TECM 적용, 없으면 비대칭 VAR 적용 (Wald 검정).
 """
 
 import sys

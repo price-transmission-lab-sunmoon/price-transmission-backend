@@ -1,4 +1,4 @@
-"""관세청 수출입 실적 Excel → 품목별 월별 수입단가($/톤) 파서.
+"""관세청 수출입 실적 Excel 파일을 파싱해 품목별 월별 수입단가($/톤)를 추출하는 파서.
 
 data/raw/customs/customs_YYYY_YYYY.xlsx 파일을 파싱해 통합 CSV 생성.
 """
@@ -87,7 +87,7 @@ def parse_single_excel(filepath):
     # 총계 행 제거 (YYYY.MM 형식만 유지)
     df = df[df["period"].astype(str).str.match(r"^\d{4}\.\d{2}$", na=False)].copy()
 
-    # float 1001.0 → "1001" (4자리 zero-padding)
+    # float 1001.0을 "1001" 형식으로 변환 (4자리 zero-padding)
     df["hs_code"] = df["hs_code"].apply(
         lambda x: str(int(x)).zfill(4) if pd.notna(x) and str(x) != 'nan' else ""
     )

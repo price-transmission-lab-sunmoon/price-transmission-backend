@@ -1,6 +1,6 @@
-"""Phase 2→6 순차 실행 진입점.
+"""Phase 2에서 7-ML까지 순차 실행 진입점.
 
-실패 시 해당 Phase 롤백 → pipeline_runs status='failed' → 이후 Phase 중단.
+실패 시 해당 Phase를 롤백하고 pipeline_runs status를 'failed'로 갱신하며 이후 Phase를 중단한다.
 """
 from __future__ import annotations
 

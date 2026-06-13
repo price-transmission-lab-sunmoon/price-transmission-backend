@@ -1,5 +1,5 @@
 """
-Phase 2 — ADF + KPSS 병행 정상성 검정 및 적분 차수 확정.
+Phase 2. ADF + KPSS 병행 정상성 검정 및 적분 차수 확정.
 
 ADF/KPSS 중 하나라도 비정상이면 보수적으로 비정상 판정.
 비정상 시계열은 1차 차분 후 재검정하여 적분 차수(I(0)/I(1)/I(2)) 기록.
@@ -52,7 +52,7 @@ def load_sa_data(commodity_id: str, sa_dir: str) -> pd.DataFrame:
 
 
 def run_adf_test(series: pd.Series) -> dict:
-    """ADF 검정. H0: 단위근(비정상) → p < α 기각 시 정상."""
+    """ADF 검정. H0: 단위근(비정상). p < α 기각 시 정상 판정."""
     result = adfuller(series.dropna(), autolag=ADF_AUTOLAG)
     return {
         "adf_stat": result[0],
@@ -65,7 +65,7 @@ def run_adf_test(series: pd.Series) -> dict:
 
 def run_kpss_test(series: pd.Series) -> dict:
     """
-    KPSS 검정. H0: 정상 → p < α 기각 시 비정상.
+    KPSS 검정. H0: 정상. p < α 기각 시 비정상 판정.
     statsmodels p-value는 [0.01, 0.10]로 클리핑됨.
     """
     with warnings.catch_warnings():
@@ -95,9 +95,9 @@ def determine_conflict_note(adf_stationary: bool, kpss_stationary: bool) -> str:
     elif not adf_stationary and not kpss_stationary:
         return "일치 (둘 다 비정상)"
     elif adf_stationary and not kpss_stationary:
-        return "상충 → 비정상 (보수적)"
+        return "상충, 보수적 판정으로 비정상 처리"
     else:
-        return "상충 → 비정상 (보수적)"
+        return "상충, 보수적 판정으로 비정상 처리"
 
 
 def test_stationarity(series: pd.Series) -> dict:
@@ -162,7 +162,7 @@ def run_phase2(sa_dir: str = SA_DIR,
     integration_orders = {}
 
     print("=" * 60)
-    print("Phase 2 — 정상성 검정 (ADF + KPSS)")
+    print("Phase 2. 정상성 검정 (ADF + KPSS)")
     print("=" * 60)
 
     for commodity_id, cfg in config.items():
@@ -191,13 +191,13 @@ def run_phase2(sa_dir: str = SA_DIR,
             integration_orders[commodity_id][col] = result["integration_order"]
 
             level_icon = "✓" if result["level_judgment"] == "stationary" else "✗"
-            level_str = f"수준: ADF p={result['level_adf_pvalue']:.4f}, KPSS p={result['level_kpss_pvalue']:.4f} → {result['level_judgment']}"
+            level_str = f"수준: ADF p={result['level_adf_pvalue']:.4f}, KPSS p={result['level_kpss_pvalue']:.4f} 판정: {result['level_judgment']}"
 
             if result["integration_order"] == 0:
                 print(f"  {col:25s} | {level_icon} {level_str} | I(0)")
             else:
                 diff_icon = "✓" if result["diff_judgment"] == "stationary" else "✗"
-                diff_str = f"차분: ADF p={result['diff_adf_pvalue']:.4f}, KPSS p={result['diff_kpss_pvalue']:.4f} → {result['diff_judgment']}"
+                diff_str = f"차분: ADF p={result['diff_adf_pvalue']:.4f}, KPSS p={result['diff_kpss_pvalue']:.4f} 판정: {result['diff_judgment']}"
                 print(f"  {col:25s} | {level_icon} {level_str}")
                 print(f"  {'':25s} | {diff_icon} {diff_str} | I({result['integration_order']})")
 

@@ -1,4 +1,4 @@
-"""Phase 7 — stat_timeseries / anomaly_results 적재
+"""Phase 7. stat_timeseries, anomaly_results 적재
 
 입력:
   data/processed/phase7/stat_timeseries/{cid}_{seg}_stat_timeseries.csv (33개)
@@ -9,8 +9,8 @@
   data/processed/phase7_ml/predictions/{cid}_{seg}_ml_predictions.csv
 
 적재 대상:
-  stat_timeseries  — 전 시점 시계열 (33개 구간 × 모든 월)
-  anomaly_results  — confidence_grade IS NOT NULL인 탐지 이벤트만
+  stat_timeseries: 전 시점 시계열 (33개 구간의 모든 월)
+  anomaly_results: confidence_grade IS NOT NULL인 탐지 이벤트만
 """
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ ZSCORE_MAX = 999999.9
 
 
 def _F(val, limit: float = NUMERIC_MAX) -> float | None:
-    """float NaN/Inf/over-range → None (numeric(12,6) overflow 방지)."""
+    """float NaN, Inf, 범위 초과값을 None으로 변환한다 (numeric(12,6) overflow 방지)."""
     if val is None:
         return None
     try:
@@ -53,7 +53,7 @@ def _FZ(val) -> float | None:
 
 
 def _B(val) -> bool | None:
-    """bool or None — NaN/None → None."""
+    """bool 또는 None을 반환한다. NaN이나 None이면 None을 반환한다."""
     if val is None or (isinstance(val, float) and math.isnan(val)):
         return None
     return bool(val)
@@ -75,12 +75,12 @@ def _I(val) -> int | None:
 
 
 async def load_stat_timeseries(session: AsyncSession, run_id: int) -> int:
-    """phase7/stat_timeseries/*.csv → stat_timeseries INSERT. 적재 행 수 반환."""
+    """phase7/stat_timeseries/*.csv를 읽어 stat_timeseries에 INSERT한다. 적재 행 수를 반환한다."""
     ts_dir = _PHASE7_ROOT / "stat_timeseries"
     files = sorted(ts_dir.glob("*_stat_timeseries.csv")) if ts_dir.exists() else []
     if not files:
         logger.warning(
-            "Phase 7 stat_timeseries CSV 없음 — skip",
+            "Phase 7 stat_timeseries CSV 없음, skip",
             extra={"dir": str(ts_dir)},
         )
         return 0
@@ -200,7 +200,7 @@ async def load_anomaly_results(session: AsyncSession, run_id: int) -> int:
     preds = _read_ml_csvs("predictions", "_ml_predictions")
 
     if grades.empty:
-        logger.warning("confidence_grades 없음 — anomaly_results 0행")
+        logger.warning("confidence_grades 없음, anomaly_results 0행")
         await session.execute(text("DELETE FROM anomaly_results"))
         return 0
 
@@ -355,7 +355,7 @@ async def refresh_anomaly_density(session: AsyncSession) -> None:
 
 
 async def load_phase7(session: AsyncSession, run_id: int) -> dict[str, int]:
-    """Phase 7 단일 트랜잭션 — stat_timeseries + anomaly_results 적재."""
+    """Phase 7 단일 트랜잭션: stat_timeseries 및 anomaly_results 적재."""
     try:
         ts_count = await load_stat_timeseries(session, run_id)
         ar_count = await load_anomaly_results(session, run_id)
@@ -367,7 +367,7 @@ async def load_phase7(session: AsyncSession, run_id: int) -> dict[str, int]:
             raise
         raise DBError(
             "DB-TX-001",
-            "Phase 7 트랜잭션 롤백 — stat_timeseries/anomaly_results 적재 실패",
+            "Phase 7 트랜잭션 롤백: stat_timeseries/anomaly_results 적재 실패",
             {"run_id": run_id, "error": str(e)},
         ) from e
 

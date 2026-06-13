@@ -1,4 +1,4 @@
-"""Pydantic DTO — /anomalies/summary, /anomalies/{id}/detail 응답."""
+"""Pydantic DTO. /anomalies/summary, /anomalies/{id}/detail 응답."""
 from __future__ import annotations
 
 from datetime import date

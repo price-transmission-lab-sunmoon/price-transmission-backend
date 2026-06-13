@@ -1,4 +1,4 @@
-"""Phase 7-ML loader 단위 테스트 — percentile·anomaly·PCA 산출 검증."""
+"""Phase 7-ML loader 단위 테스트. percentile, anomaly, PCA 산출을 검증한다."""
 from __future__ import annotations
 
 import math
@@ -29,12 +29,12 @@ def test_force_bool_false():
 
 
 def test_force_bool_none():
-    """None → False."""
+    """None 입력 시 False를 반환한다."""
     assert _force_bool(None) is False
 
 
 def test_force_bool_nan():
-    """NaN → False."""
+    """NaN 입력 시 False를 반환한다."""
     assert _force_bool(float("nan")) is False
 
 
@@ -76,17 +76,17 @@ def _sample_predictions() -> pd.DataFrame:
         "commodity_id": ["wheat"] * 5,
         "segment_id": ["A"] * 5,
         "date": pd.date_range("2024-01-01", periods=5, freq="MS"),
-        # IF score: 낮을수록 이상 → 최저값 -1.5가 100% percentile
+        # IF score: 낮을수록 이상이므로 최저값 -1.5가 100% percentile
         "if_score": [-1.5, -1.0, -0.5, 0.0, 0.5],
         # LOF score: 낮을수록 이상 (negative_outlier_factor)
         "lof_score": [-3.0, -2.0, -1.5, -1.1, -1.0],
-        # SVM decision_function: 음수=이상 → 가장 음수가 최상위 이상
+        # SVM decision_function: 음수면 이상이므로 가장 음수인 값이 최상위 이상
         "svm_score": [-0.4, -0.2, 0.0, 0.1, 0.2],
     })
 
 
 def test_compute_percentiles_if_direction():
-    """IF score 가장 낮은 행이 percentile 100 — 높을수록 이상."""
+    """IF score가 가장 낮은 행이 percentile 100이다. 점수가 낮을수록 이상 가능성이 높다."""
     df = _compute_percentiles(_sample_predictions())
     assert df.loc[0, "if_percentile"] == pytest.approx(100.0)
     assert df.loc[4, "if_percentile"] == pytest.approx(20.0)
@@ -100,7 +100,7 @@ def test_compute_percentiles_lof_direction():
 
 
 def test_compute_percentiles_svm_direction():
-    """SVM decision_function 음수=이상 → 가장 음수가 최상위 percentile."""
+    """SVM decision_function에서 음수면 이상이므로 가장 음수인 값이 최상위 percentile이다."""
     df = _compute_percentiles(_sample_predictions())
     assert df.loc[0, "svm_percentile"] == pytest.approx(100.0)
     assert df.loc[4, "svm_percentile"] == pytest.approx(20.0)
@@ -115,7 +115,7 @@ def test_compute_percentiles_range_0_100():
 
 
 def test_compute_percentiles_segment_independent():
-    """segment 단위로 독립 산출 — wheat·A와 wheat·B의 score 분포가 섞이지 않아야 함."""
+    """segment 단위로 독립 산출한다. wheat A와 wheat B의 score 분포가 섞이지 않아야 한다."""
     df = pd.DataFrame({
         "commodity_id": ["wheat"] * 3 + ["wheat"] * 3,
         "segment_id": ["A"] * 3 + ["B"] * 3,
@@ -144,12 +144,12 @@ def test_compute_percentiles_null_score_null_percentile():
     out = _compute_percentiles(df)
     assert math.isnan(out.loc[1, "if_percentile"])
     assert out.loc[0, "if_percentile"] == pytest.approx(100.0)
-    # LOF 전부 NaN → percentile 전부 NaN
+    # LOF 점수가 전부 NaN이면 percentile도 전부 NaN
     assert out["lof_percentile"].isna().all()
 
 
 def test_compute_percentiles_single_observation():
-    """segment 내 관측치 1건 — rank(pct=True)=1.0 → percentile=100.0."""
+    """segment 내 관측치 1건이면 rank(pct=True)가 1.0이므로 percentile은 100.0이다."""
     df = pd.DataFrame({
         "commodity_id": ["wheat"],
         "segment_id": ["A"],
@@ -220,7 +220,7 @@ def test_pca_feature_columns_fixed():
 
 
 def test_pca_model_score_map():
-    """3종 모델 매핑 — model_name과 score/anomaly 컬럼 짝."""
+    """3종 모델 매핑. model_name과 score/anomaly 컬럼이 올바르게 짝지어져야 한다."""
     names = [m[0] for m in _MODEL_SCORE_MAP]
     assert names == ["isolation_forest", "lof", "ocsvm"]
 
@@ -257,7 +257,7 @@ def test_pca_projections_skips_short_segments():
 
 
 def test_pca_projections_segment_independent():
-    """segment 별 독립 산출 — A와 B 좌표 독립."""
+    """segment별 독립 산출. A와 B 좌표는 서로 독립적으로 계산된다."""
     feat_a = _sample_features(5)
     feat_b = _sample_features(5)
     feat_b["segment_id"] = "B"

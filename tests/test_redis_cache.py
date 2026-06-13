@@ -1,4 +1,4 @@
-"""Redis 캐싱 단위 테스트 — cache_get/set/delete + HIT/MISS 흐름 + 에러 폴백."""
+"""Redis 캐싱 단위 테스트. cache_get/set/delete와 HIT/MISS 흐름 및 에러 폴백을 검증한다."""
 from __future__ import annotations
 
 import json
@@ -46,7 +46,7 @@ async def test_cache_get_hit_returns_dict():
 
 @pytest.mark.asyncio
 async def test_cache_get_connection_error_returns_none(caplog):
-    """Redis 연결 실패(DB-CACHE-001) → WARN 로그 + None 반환."""
+    """Redis 연결 실패(DB-CACHE-001) 시 WARN 로그를 남기고 None을 반환한다."""
     client = _make_redis(raise_on_get=True)
     with caplog.at_level("WARNING"):
         result = await cache_get(client, "test:key")
@@ -56,7 +56,7 @@ async def test_cache_get_connection_error_returns_none(caplog):
 
 @pytest.mark.asyncio
 async def test_cache_get_invalid_json_deletes_key_and_returns_none(caplog):
-    """JSON 역직렬화 실패(DB-CACHE-002) → 해당 키 삭제 + None 반환."""
+    """JSON 역직렬화 실패(DB-CACHE-002) 시 해당 키를 삭제하고 None을 반환한다."""
     client = _make_redis(get_return="NOT_VALID_JSON{{{")
     with caplog.at_level("WARNING"):
         result = await cache_get(client, "test:broken_key")
@@ -82,7 +82,7 @@ async def test_cache_set_stores_json():
 
 @pytest.mark.asyncio
 async def test_cache_set_connection_error_logs_warn(caplog):
-    """쓰기 실패(DB-CACHE-001) → WARN 로그만, 서비스 중단 없음."""
+    """쓰기 실패(DB-CACHE-001) 시 WARN 로그만 남기고 서비스를 중단하지 않는다."""
     client = _make_redis(raise_on_set=True)
     with caplog.at_level("WARNING"):
         await cache_set(client, "test:key", {"x": 1}, ttl=3600)
@@ -110,12 +110,12 @@ async def test_cache_delete_pattern_removes_matching_keys():
 
 @pytest.mark.asyncio
 async def test_cache_delete_pattern_connection_error_returns_zero(caplog):
-    """삭제 중 연결 실패(DB-CACHE-001) → WARN + 0 반환."""
+    """삭제 중 연결 실패(DB-CACHE-001) 시 WARN을 남기고 0을 반환한다."""
     client = AsyncMock()
 
     async def mock_scan_iter_raise(match, count):
         raise ConnectionError("Redis down")
-        yield  # noqa: unreachable — async generator 마커
+        yield  # noqa: unreachable -- async generator 마커
 
     client.scan_iter = mock_scan_iter_raise
     with caplog.at_level("WARNING"):
@@ -172,7 +172,7 @@ async def test_hit_miss_flow():
 
 @pytest.mark.asyncio
 async def test_parse_redis_001_scenario():
-    """올바른 JSON이지만 스키마 불일치 — PARSE-REDIS-001 경로 검증."""
+    """올바른 JSON이지만 스키마 불일치 시 PARSE-REDIS-001 경로를 검증한다."""
     from pydantic import ValidationError
 
     from app.schemas.timeseries import StreamResponse
@@ -217,7 +217,7 @@ class _Toy(BaseModel):
 
 @pytest.mark.asyncio
 async def test_cached_or_compute_miss_calls_compute_and_sets():
-    """MISS → compute() 실행 + 결과 캐시 적재."""
+    """MISS 시 compute()를 실행하고 결과를 캐시에 적재한다."""
     store: dict[str, str] = {}
     client = AsyncMock()
 
@@ -244,7 +244,7 @@ async def test_cached_or_compute_miss_calls_compute_and_sets():
 
 @pytest.mark.asyncio
 async def test_cached_or_compute_hit_skips_compute():
-    """HIT 검증 통과 → compute() 미실행."""
+    """HIT 검증 통과 시 compute()를 실행하지 않는다."""
     client = _make_redis(get_return=json.dumps({"x": 5}))
 
     calls: list[int] = []
@@ -260,7 +260,7 @@ async def test_cached_or_compute_hit_skips_compute():
 
 @pytest.mark.asyncio
 async def test_cached_or_compute_invalid_cache_falls_back(caplog):
-    """스키마 불일치(PARSE-REDIS-001) → 캐시 삭제 + compute 폴백."""
+    """스키마 불일치(PARSE-REDIS-001) 시 캐시를 삭제하고 compute로 폴백한다."""
     client = _make_redis(get_return=json.dumps({"y": "bad"}))  # x 누락
     client.delete.return_value = 1
 

@@ -1,7 +1,7 @@
 """
-Phase 6 — Bai-Perron 구조 변화 탐지 및 하위 기간 분할.
+Phase 6. Bai-Perron 구조 변화 탐지 및 하위 기간 분할.
 
-Dynp+BIC로 최적 변화점 수 결정, Chow Test(2008·2020·2022)로 교차 확인.
+Dynp+BIC로 최적 변화점 수 결정, Chow Test(2008, 2020, 2022)로 교차 확인.
 탐지된 변화 시점 기준 하위 기간에서 VAR/VECM 재추정.
 
 입력:
@@ -36,17 +36,17 @@ except ImportError:
     from pipeline.preprocessing.phase4_model_estimation import estimate_vecm, estimate_var
 
 SIGNIFICANCE_LEVEL = 0.05
-STABILITY_THRESHOLD = 0.03       # |상류 변화율| < 3% → 전이율 NaN
+STABILITY_THRESHOLD = 0.03       # 상류 변화율 절대값 3% 미만이면 전이율 NaN 처리
 MIN_SUBPERIOD_OBS = 60           # 하위 기간 최소 관측치
 MAX_BREAKPOINTS = 5              # Bai-Perron 최대 탐색 변화점 수
 CHOW_TEST_POINTS = ["2008-01", "2020-01", "2022-01"]
 
-# Trace가 임계값 ±10% 이내이거나 모형 전환이 발생한 구간 (Phase 3 결과 기반)
+# Trace가 임계값 10% 이내이거나 모형 전환이 발생한 구간 (Phase 3 결과 기반)
 BORDERLINE_SEGMENTS = {
     ("groundnuts", "D"),   # Trace=15.55 vs 임계값 15.49
-    ("maize", "D_prime"),  # 14개월 추가로 VECM→VAR 뒤집힘
+    ("maize", "D_prime"),  # 14개월 추가로 VECM에서 VAR로 뒤집힘
     ("coffee", "B"),       # Trace=14.73 (임계값 대비 95%)
-    ("coffee", "A"),       # VAR→VECM 전환 + I(2) 플래그
+    ("coffee", "A"),       # VAR에서 VECM으로 전환, I(2) 플래그
     ("groundnuts", "B"),   # I(2) 플래그 (땅콩 ppi)
     ("groundnuts", "C"),   # I(2) 플래그 (땅콩 ppi)
 }
@@ -97,8 +97,8 @@ def load_sa(cid, sa_dir=SA_DIR):
 def compute_transmission_rate(df_changes, upstream_pct, downstream_pct):
     """
     전이율 = 하류 변화율 / 상류 변화율.
-    안정 구간 필터: |상류 변화율| < STABILITY_THRESHOLD*100 → NaN.
-    극단값 클리핑: ±10 범위.
+    안정 구간 필터: 상류 변화율 절대값이 STABILITY_THRESHOLD*100 미만이면 NaN 처리.
+    극단값 클리핑: -10 이상 10 이하 범위.
     """
     upstream = df_changes[upstream_pct].copy()
     downstream = df_changes[downstream_pct].copy()
@@ -384,7 +384,7 @@ def reestimate_subperiod(
 
 
 def process_segment(cid, seg, route, df_changes, df_sa, baseline, output_dir):
-    """단일 품목·구간에 대해 Bai-Perron + Chow + 하위 기간 분할 + 재추정."""
+    """단일 품목, 구간에 대해 Bai-Perron, Chow, 하위 기간 분할, 재추정 수행."""
 
     upstream = route["upstream"]
     downstream = route["downstream"]
@@ -410,9 +410,9 @@ def process_segment(cid, seg, route, df_changes, df_sa, baseline, output_dir):
     try:
         bp_indices, best_k, bic_scores = run_bai_perron(rate)
     except Exception as e:
-        # Bai-Perron 실패 → 단일 기간 유지
+        # Bai-Perron 실패 시 단일 기간 유지
         logger.warning(
-            'PL-P6-001", "msg": "Bai-Perron 실패: %s — 단일 기간 유지", '
+            'PL-P6-001", "msg": "Bai-Perron 실패: %s, 단일 기간 유지", '
             '"phase": "6", "context": {"commodity_id": "%s", "segment": "%s"}',
             str(e), cid, seg,
         )
@@ -444,7 +444,7 @@ def process_segment(cid, seg, route, df_changes, df_sa, baseline, output_dir):
     independent = [sp for sp in subperiods if "merged_with" not in sp]
     if best_k > 0 and all(sp["n_obs"] < MIN_SUBPERIOD_OBS for sp in independent):
         logger.warning(
-            'PL-P6-003", "msg": "모든 하위 기간 < %d — 단일 기간 유지", '
+            'PL-P6-003", "msg": "모든 하위 기간 관측치가 %d 미만, 단일 기간 유지", '
             '"phase": "6", "context": {"commodity_id": "%s", "segment": "%s"}',
             MIN_SUBPERIOD_OBS, cid, seg,
         )
@@ -519,7 +519,7 @@ def run_phase6(
 ):
     """Phase 6 전체 실행."""
     logger.info(
-        'PHASE_START", "msg": "Phase 6 시작 — 구조 변화 탐지 및 기간 분할", "phase": "6"'
+        'PHASE_START", "msg": "Phase 6 시작, 구조 변화 탐지 및 기간 분할", "phase": "6"'
     )
 
     for sub in ["breakpoints", "chow_results", "subperiod_models"]:
@@ -558,14 +558,14 @@ def run_phase6(
         )
 
     print("\n" + "=" * 70)
-    print("Phase 6 — 구조 변화 탐지 및 기간 분할 결과")
+    print("Phase 6. 구조 변화 탐지 및 기간 분할 결과")
     print("=" * 70)
     for row in summary_rows:
         bp_str = ", ".join(row["bp_dates"]) if row["bp_dates"] else "없음"
         chow_parts = []
         for yr, key in [("08", "chow_2008_sig"), ("20", "chow_2020_sig"), ("22", "chow_2022_sig")]:
             v = row[key]
-            chow_parts.append(f"{yr}{'✔' if v is True else '✗' if v is False else '—'}")
+            chow_parts.append(f"{yr}{'✔' if v is True else '✗' if v is False else 'N'}")
         bl = "⚠" if row.get("borderline") else " "
         print(f" {bl}{row['commodity_id']:12s} {row['segment']:7s} | "
               f"n={row['n_obs']:3d} | BP={row['n_breakpoints']} ({bp_str:30s}) | "
@@ -573,7 +573,7 @@ def run_phase6(
               f"기간={row['n_subperiods']} 재추정={row['reestimation_count']}")
     print("=" * 70)
 
-    logger.info('PHASE_DONE", "msg": "Phase 6 완료 — %d개 구간"', len(summary_rows))
+    logger.info('PHASE_DONE", "msg": "Phase 6 완료, %d개 구간 처리"', len(summary_rows))
     return summary_rows
 
 

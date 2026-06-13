@@ -17,13 +17,13 @@ from app.schemas.meta import (
 
 # TODO: settings.py로 이전 검토 (_DEFAULTS 키들을 settings 환경변수로 관리)
 _DEFAULTS: dict = {
-    "pipeline_version": "v8",          # → PIPELINE_VERSION
-    "iqr_multiplier": 1.5,             # → IQR_MULTIPLIER
-    "stability_threshold": 0.03,       # → STABILITY_THRESHOLD
-    "pattern3_n_values": [2, 3, 6],    # → PATTERN3_N_VALUES
-    "min_subperiod_obs": 60,           # → MIN_SUBPERIOD_OBS
-    "lag_search_range": [1, 4],        # → LAG_SEARCH_RANGE
-    "chow_test_points": ["2008-01", "2020-01", "2022-01"],  # → CHOW_TEST_POINTS
+    "pipeline_version": "v8",          # 추후 PIPELINE_VERSION 설정으로 대체
+    "iqr_multiplier": 1.5,             # 추후 IQR_MULTIPLIER 설정으로 대체
+    "stability_threshold": 0.03,       # 추후 STABILITY_THRESHOLD 설정으로 대체
+    "pattern3_n_values": [2, 3, 6],    # 추후 PATTERN3_N_VALUES 설정으로 대체
+    "min_subperiod_obs": 60,           # 추후 MIN_SUBPERIOD_OBS 설정으로 대체
+    "lag_search_range": [1, 4],        # 추후 LAG_SEARCH_RANGE 설정으로 대체
+    "chow_test_points": ["2008-01", "2020-01", "2022-01"],  # 추후 CHOW_TEST_POINTS 설정으로 대체
 }
 
 _PIPELINE_NODES: list[PipelineNode] = [

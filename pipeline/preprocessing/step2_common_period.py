@@ -1,4 +1,4 @@
-"""Step 2: 품목별 소스 기간 교집합 → 공통 분석 기간 산출."""
+"""Step 2: 품목별 소스 기간 교집합을 구해 공통 분석 기간을 산출한다."""
 
 import json
 import pandas as pd
@@ -121,7 +121,7 @@ def find_common_period():
         print(f"  {name_kr}({cid})")
         for src, (s, e) in periods.items():
             print(f"    {src:<8} {s.strftime('%Y-%m')}~{e.strftime('%Y-%m')}")
-        print(f"    → 공통: {common_str} ({months}개월)")
+        print(f"    공통 기간: {common_str} ({months}개월)")
         print()
 
         results.append({

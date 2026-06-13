@@ -1,4 +1,4 @@
-"""ORM 모델 — commodities, segments, external_events."""
+"""ORM 모델: commodities, segments, external_events."""
 from sqlalchemy import TIMESTAMP, Boolean, Column, Date, Integer, String
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.sql import func

@@ -1,4 +1,4 @@
-"""ORM models — Phase 4~5 계량 테이블 (model_params, irf_data, baselines, granger_results)."""
+"""ORM models: Phase 4~5 계량 테이블 (model_params, irf_data, baselines, granger_results)."""
 from __future__ import annotations
 
 from sqlalchemy import (

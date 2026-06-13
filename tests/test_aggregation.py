@@ -1,4 +1,4 @@
-"""app.services.aggregation 단위 테스트 — granularity 집계 + 이상 밀도."""
+"""app.services.aggregation 단위 테스트. granularity 집계 및 이상 밀도 검증."""
 from __future__ import annotations
 
 from datetime import date

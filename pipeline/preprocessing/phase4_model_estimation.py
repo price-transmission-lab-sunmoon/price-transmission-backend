@@ -1,8 +1,8 @@
 """
-Phase 4 — VAR/VECM 추정 및 IRF 기반 기준선 산출.
+Phase 4. VAR/VECM 추정 및 IRF 기반 기준선 산출.
 
 model_routing.json에 따라 구간별 VAR 또는 VECM을 추정하고
-IRF 피크에서 정상 전달 시차·전이탄력성을 산출한다.
+IRF 피크에서 정상 전달 시차, 전이탄력성을 산출한다.
 
 입력:
     data/processed/phase1/seasonal_adjusted/{cid}_sa.csv
@@ -254,7 +254,7 @@ def run_phase4(sa_dir: str = SA_DIR,
     summary_rows = []
 
     print("=" * 60)
-    print("Phase 4 — 모형 추정 및 기준선 산출 (VAR/VECM + IRF)")
+    print("Phase 4. 모형 추정 및 기준선 산출 (VAR/VECM + IRF)")
     print("=" * 60)
 
     for commodity_id, cfg in config.items():

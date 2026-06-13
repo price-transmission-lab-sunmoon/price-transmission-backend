@@ -1,4 +1,4 @@
-"""축 5 — 합의 기반 지표(CTA + ASC + P_stat + P_ml) 산출."""
+"""축 5: 합의 기반 지표(CTA + ASC + P_stat + P_ml) 산출."""
 
 import sys
 import os
@@ -82,7 +82,7 @@ def compute_p_ml(cv_df, pred_df, shocks):
 
 
 def compute_esr_stat(cv_df, shocks):
-    """ESR_stat — 보조 지표 (충격 윈도우 내 통계 탐지 1건+ → 회수 비율)."""
+    """ESR_stat 보조 지표. 충격 윈도우 내 통계 탐지 1건 이상이면 회수로 간주하여 비율을 반환한다."""
     n_shocks = len(shocks)
     if n_shocks == 0:
         return np.nan
@@ -101,7 +101,7 @@ def compute_esr_stat(cv_df, shocks):
 
 
 def compute_esr_ml(pred_df, shocks):
-    """ESR_ml — 보조 지표 (충격 윈도우 내 ML 탐지 1건+ → 회수 비율)."""
+    """ESR_ml 보조 지표. 충격 윈도우 내 ML 탐지 1건 이상이면 회수로 간주하여 비율을 반환한다."""
     n_shocks = len(shocks)
     if n_shocks == 0:
         return np.nan

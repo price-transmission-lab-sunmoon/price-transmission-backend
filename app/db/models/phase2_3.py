@@ -1,4 +1,4 @@
-"""ORM models — Phase 2~3 계량 테이블 (stationarity_results, cointegration_results)."""
+"""ORM models: Phase 2~3 계량 테이블 (stationarity_results, cointegration_results)."""
 from __future__ import annotations
 
 from sqlalchemy import (
@@ -39,7 +39,7 @@ class StationarityResult(Base):
     level_judgment: Mapped[str | None] = mapped_column(String(20))
     level_conflict_note: Mapped[str | None] = mapped_column(String(50))
 
-    # 차분(diff) 검정 — 비정상 시에만 값 존재
+    # 차분(diff) 검정. 비정상 시에만 값 존재
     diff_adf_stat: Mapped[float | None] = mapped_column(Numeric(10, 4))
     diff_adf_pvalue: Mapped[float | None] = mapped_column(Numeric(8, 4))
     diff_kpss_stat: Mapped[float | None] = mapped_column(Numeric(10, 4))

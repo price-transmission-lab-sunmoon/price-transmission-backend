@@ -1,4 +1,4 @@
-"""Pydantic DTO — /meta, /freshness, /events, /segments, /admin/batch 응답."""
+"""Pydantic DTO. /meta, /freshness, /events, /segments, /admin/batch 응답."""
 from __future__ import annotations
 
 from datetime import date
@@ -24,7 +24,7 @@ def _date_to_yyyymmdd(d: date | str | None) -> str | None:
 
 
 class MetaConfigResponse(BaseModel):
-    """GET /meta/config — 헬스체크."""
+    """GET /meta/config. 헬스체크."""
     app_env: Literal["development", "production"]
     db_status: Literal["ok", "down"]
     redis_status: Literal["ok", "down"]

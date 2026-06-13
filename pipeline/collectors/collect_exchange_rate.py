@@ -1,4 +1,4 @@
-"""한국수출입은행 환율 수집기 — USD/KRW 일별 매매기준율 → 월평균 집계."""
+"""한국수출입은행 환율 수집기. USD/KRW 일별 매매기준율을 수집하고 월평균으로 집계한다."""
 
 import os
 import sys
@@ -56,7 +56,7 @@ def fetch_daily_rate(search_date):
     return None
 
 def fetch_daily_rate_with_retry(target_date, max_retry=3):
-    """조회 실패 시 ±1~3일 영업일로 재시도."""
+    """조회 실패 시 전후 1~3일 영업일로 재시도."""
     result = fetch_daily_rate(target_date)
     if result:
         return result
@@ -132,7 +132,7 @@ def collect_exchange_rate(start_year=2000, end_date=None):
     df = pd.DataFrame(daily_records)
     df["date"] = pd.to_datetime(df["date"])
 
-    # 쉼표 포함 문자열 → float
+    # 쉼표 포함 문자열을 float으로 변환
     for col in ["deal_bas_r", "ttb", "tts"]:
         df[col] = df[col].astype(str).str.replace(",", "").astype(float)
     

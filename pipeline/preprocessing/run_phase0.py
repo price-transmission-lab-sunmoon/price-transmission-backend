@@ -1,4 +1,4 @@
-"""Phase 0 전처리 통합 실행기 — Step 1~5 순차 실행."""
+"""Phase 0 전처리 통합 실행기. Step 1~5를 순차 실행한다."""
 
 from pipeline.preprocessing.step1_convert_to_krw import convert_to_krw
 from pipeline.preprocessing.step2_common_period import find_common_period
@@ -9,7 +9,7 @@ from pipeline.preprocessing.step5_product_config import generate_product_config
 
 def run_phase0():
     print("╔══════════════════════════════════════════════════════════╗")
-    print("║  Phase 0 — 전처리 통합 실행                             ║")
+    print("║  Phase 0. 전처리 통합 실행                              ║")
     print("╚══════════════════════════════════════════════════════════╝")
 
     results = {}
@@ -61,14 +61,14 @@ def run_phase0():
         print(f"    {step}: {status}")
 
     print(f"\n  📂 출력 파일:")
-    print(f"    data/processed/worldbank_prices_krw.csv     ← 원화 환산 국제가")
-    print(f"    data/processed/common_periods.csv           ← 공통 분석 기간")
-    print(f"    data/processed/missing_value_report.csv     ← 결측치 리포트")
-    print(f"    data/processed/merged/all_commodities.csv   ← 전체 통합 데이터셋")
-    print(f"    data/processed/merged/{{품목}}.csv            ← 품목별 개별 파일")
-    print(f"    data/processed/product_config.json          ← 품목별 분석 설정")
+    print(f"    data/processed/worldbank_prices_krw.csv     (원화 환산 국제가)")
+    print(f"    data/processed/common_periods.csv           (공통 분석 기간)")
+    print(f"    data/processed/missing_value_report.csv     (결측치 리포트)")
+    print(f"    data/processed/merged/all_commodities.csv   (전체 통합 데이터셋)")
+    print(f"    data/processed/merged/{{품목}}.csv            (품목별 개별 파일)")
+    print(f"    data/processed/product_config.json          (품목별 분석 설정)")
 
-    print(f"\n  ▶ 다음 단계: Phase 1 (STL 계절 조정)")
+    print(f"\n  다음 단계: Phase 1 (STL 계절 조정)")
 
 
 if __name__ == "__main__":

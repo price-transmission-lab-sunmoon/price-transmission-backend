@@ -1,11 +1,13 @@
-"""Phase 3 — cointegration_results 적재.
+"""Phase 3: cointegration_results 적재.
 
 컬럼명 매핑:
-  segment / upstream / downstream / model_selected → segment_id / upstream_col / downstream_col / model_type
-  trace_stat_r0 / eigen_stat_r0 → trace_stat / maxeig_stat (pvalue Johansen 미제공 → NULL)
+  segment / upstream / downstream / model_selected
+    각각 segment_id / upstream_col / downstream_col / model_type 로 저장
+  trace_stat_r0 / eigen_stat_r0
+    각각 trace_stat / maxeig_stat 로 저장 (pvalue는 Johansen 미제공이므로 NULL)
 
 DB 전용 컬럼: upstream/downstream_integration_order (stationarity_results 조회),
-  integration_order_match, coint_tested, coint_rank, granger_direction (Phase 5 UPDATE)
+  integration_order_match, coint_tested, coint_rank, granger_direction (Phase 5에서 UPDATE)
 """
 from __future__ import annotations
 
@@ -34,7 +36,7 @@ async def load_cointegration_results(
     session: AsyncSession,
     run_id: int,
 ) -> int:
-    """cointegration_results.csv → cointegration_results UPSERT."""
+    """cointegration_results.csv를 읽어 cointegration_results 테이블에 UPSERT한다."""
     csv_path = Path(settings.pipeline_data_root) / "phase3" / "cointegration_results.csv"
     if not csv_path.exists():
         raise DBError(
@@ -46,7 +48,7 @@ async def load_cointegration_results(
     try:
         df = pd.read_csv(csv_path)
     except pd.errors.EmptyDataError:
-        logger.warning("Phase 3 cointegration_results.csv 비어있음 — 적재 건너뜀", extra={"run_id": run_id})
+        logger.warning("Phase 3 cointegration_results.csv 비어있음, 적재 건너뜀", extra={"run_id": run_id})
         return 0
     except Exception as e:
         raise DBError(
@@ -56,7 +58,7 @@ async def load_cointegration_results(
         ) from e
 
     if df.empty:
-        logger.warning("Phase 3 cointegration_results.csv 유효 데이터 없음 — 적재 건너뜀", extra={"run_id": run_id})
+        logger.warning("Phase 3 cointegration_results.csv 유효 데이터 없음, 적재 건너뜀", extra={"run_id": run_id})
         return 0
 
     int_orders = await _fetch_integration_orders(session)
@@ -151,7 +153,7 @@ async def load_cointegration_results(
             raise
         raise DBError(
             "DB-TX-001",
-            "Phase 3 트랜잭션 롤백 — cointegration_results 적재 실패",
+            "Phase 3 트랜잭션 롤백: cointegration_results 적재 실패",
             {"run_id": run_id, "error": str(e)},
         ) from e
 

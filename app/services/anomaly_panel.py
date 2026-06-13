@@ -1,4 +1,4 @@
-"""패널 엔드포인트 서비스 — /detail, /stat-series, /stat-snapshot, /irf, /ml-map."""
+"""패널 엔드포인트 서비스. /detail, /stat-series, /stat-snapshot, /irf, /ml-map."""
 from __future__ import annotations
 
 from datetime import date
@@ -42,7 +42,7 @@ from app.schemas.timeseries import StatSeriesPoint, StatSeriesResponse
 
 
 def _parse_yyyymm(value: str, field: str) -> date:
-    """YYYY-MM → date."""
+    """YYYY-MM을 date로 변환."""
     return parse_yyyymm(value, field, code="API-MET-001")
 
 
@@ -245,7 +245,7 @@ async def get_stat_series(
     granularity: str,
     db: AsyncSession,
 ) -> StatSeriesResponse:
-    """지표별 시계열 — stat_timeseries 조회."""
+    """지표별 시계열. stat_timeseries 조회."""
     if metric in ("iqr", "asymmetry"):
         raise APIError(
             "API-MET-002",
@@ -356,7 +356,7 @@ async def get_stat_series(
 async def get_stat_snapshot_iqr(
     anomaly_id: int, db: AsyncSession
 ) -> StatSnapshotIQRResponse:
-    """metric=iqr — 해당 월 stat_timeseries의 IQR 박스플롯 데이터."""
+    """metric=iqr. 해당 월 stat_timeseries의 IQR 박스플롯 데이터."""
     ar = await _get_anomaly_or_404(db, anomaly_id)
     stat = await _get_stat_at(db, ar.commodity_id, ar.segment_id, ar.period)
     if stat is None:
@@ -383,7 +383,7 @@ async def get_stat_snapshot_iqr(
 async def get_stat_snapshot_asymmetry(
     anomaly_id: int, db: AsyncSession
 ) -> StatSnapshotAsymmetryResponse:
-    """metric=asymmetry — 비대칭 검정 결과 + 상승/하락 표본."""
+    """metric=asymmetry. 비대칭 검정 결과 및 상승/하락 표본."""
     ar = await _get_anomaly_or_404(db, anomaly_id)
     asym = (await db.execute(
         select(AsymmetryResult).where(and_(
@@ -428,7 +428,7 @@ async def get_stat_snapshot_asymmetry(
 async def get_irf(
     anomaly_id: int, include_subperiods: bool, db: AsyncSession
 ) -> IRFResponse:
-    """IRF 곡선 — 전체 기간 + 옵션 시 하위 기간별."""
+    """IRF 곡선. 전체 기간, 옵션 활성화 시 하위 기간별 포함."""
     ar = await _get_anomaly_or_404(db, anomaly_id)
 
     full_rows = (await db.execute(
@@ -534,7 +534,7 @@ async def get_ml_map(
     projection_method: str,
     db: AsyncSession,
 ) -> MLMapResponse:
-    """ML 결과맵 2D 투영 — ml_projections 조회. 데이터 없으면 빈 응답."""
+    """ML 결과맵 2D 투영. ml_projections 조회. 데이터 없으면 빈 응답."""
     ar = await _get_anomaly_or_404(db, anomaly_id)
     model_name = _MODEL_MAP.get(model, model)
 

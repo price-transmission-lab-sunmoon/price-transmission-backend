@@ -1,4 +1,4 @@
-"""수집 데이터 탐색 — 소스별 기간·결측치 현황 및 품목별 가격 시각화."""
+"""수집 데이터 탐색. 소스별 기간, 결측치 현황 및 품목별 가격 시각화."""
 
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -49,7 +49,7 @@ def load_all_data():
 
 
 def analyze_coverage(data):
-    """소스별 품목별 기간·결측치 현황."""
+    """소스별 품목별 기간, 결측치 현황."""
     print(f"\n{'='*70}")
     print(f"  소스별 데이터 현황")
     print(f"{'='*70}")
@@ -171,7 +171,7 @@ def find_common_period(data):
 
 
 def plot_price_series(data):
-    """품목별 국제가·수입단가·PPI/CPI 3열 시각화."""
+    """품목별 국제가, 수입단가, PPI/CPI 3열 시각화."""
     print(f"\n{'='*70}")
     print(f"  시각화 생성 중...")
     print(f"{'='*70}")
@@ -190,7 +190,7 @@ def plot_price_series(data):
             wb = data["worldbank"][data["worldbank"]["commodity_id"] == cid].sort_values("date")
             if not wb.empty:
                 ax.plot(wb["date"], wb["price_usd_mt"], color="tab:blue", linewidth=1)
-        ax.set_title(f"{info['kr']} — 국제가 ($/톤)")
+        ax.set_title(f"{info['kr']} 국제가 ($/톤)")
         ax.set_ylabel("$/톤")
         ax.grid(True, alpha=0.3)
         ax.xaxis.set_major_locator(mdates.YearLocator(5))
@@ -201,7 +201,7 @@ def plot_price_series(data):
             cu = data["customs"][data["customs"]["commodity_id"] == cid].sort_values("date")
             if not cu.empty:
                 ax.plot(cu["date"], cu["import_unit_price"], color="tab:orange", linewidth=1)
-        ax.set_title(f"{info['kr']} — 수입단가 ($/톤)")
+        ax.set_title(f"{info['kr']} 수입단가 ($/톤)")
         ax.set_ylabel("$/톤")
         ax.grid(True, alpha=0.3)
         ax.xaxis.set_major_locator(mdates.YearLocator(5))
@@ -216,13 +216,13 @@ def plot_price_series(data):
             if not cpi.empty:
                 ax.plot(cpi["date"], cpi["value"], color="tab:red", linewidth=1, label=f"CPI ({info['cpi']})")
             ax.legend(fontsize=8)
-        ax.set_title(f"{info['kr']} — PPI / CPI (2020=100)")
+        ax.set_title(f"{info['kr']} PPI / CPI (2020=100)")
         ax.set_ylabel("지수")
         ax.grid(True, alpha=0.3)
         ax.xaxis.set_major_locator(mdates.YearLocator(5))
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
 
-    plt.suptitle("Phase 0 수집 데이터 탐색 — 품목별 가격 전달 체계", fontsize=14, fontweight="bold")
+    plt.suptitle("Phase 0 수집 데이터 탐색. 품목별 가격 전달 체계", fontsize=14, fontweight="bold")
     plt.tight_layout()
 
     chart_path = OUTPUT_DIR / "explore_collected_data.png"
@@ -254,14 +254,14 @@ def plot_overlay_comparison(data):
             if not cu.empty:
                 ax.plot(cu["date"], cu["import_unit_price"], color="tab:orange", linewidth=1, alpha=0.8, label="수입단가 (관세청)")
 
-        ax.set_title(f"{kr_name} — 국제가 vs 수입단가 ($/톤)")
+        ax.set_title(f"{kr_name} 국제가 vs 수입단가 ($/톤)")
         ax.set_ylabel("$/톤")
         ax.legend(fontsize=8)
         ax.grid(True, alpha=0.3)
         ax.xaxis.set_major_locator(mdates.YearLocator(5))
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
 
-    plt.suptitle("국제가 → 수입단가 전달 추이", fontsize=13, fontweight="bold")
+    plt.suptitle("국제가에서 수입단가로의 전달 추이", fontsize=13, fontweight="bold")
     plt.tight_layout()
 
     chart_path = OUTPUT_DIR / "explore_segment_A_comparison.png"
@@ -272,7 +272,7 @@ def plot_overlay_comparison(data):
 
 if __name__ == "__main__":
     print("╔══════════════════════════════════════════════════════════╗")
-    print("║  Phase 0 — 수집 데이터 탐색 분석                       ║")
+    print("║  Phase 0 수집 데이터 탐색 분석                          ║")
     print("╚══════════════════════════════════════════════════════════╝")
 
     print(f"\n  📂 데이터 로드:")

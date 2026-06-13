@@ -1,4 +1,4 @@
-"""Phase 2 — stationarity_results 적재."""
+"""Phase 2: stationarity_results 적재."""
 from __future__ import annotations
 
 import logging
@@ -19,7 +19,7 @@ async def load_stationarity_results(
     session: AsyncSession,
     run_id: int,
 ) -> int:
-    """stationarity_results.csv → stationarity_results UPSERT."""
+    """stationarity_results.csv를 읽어 stationarity_results 테이블에 UPSERT한다."""
     csv_path = Path(settings.pipeline_data_root) / "phase2" / "stationarity_results.csv"
     if not csv_path.exists():
         raise DBError(
@@ -31,7 +31,7 @@ async def load_stationarity_results(
     try:
         df = pd.read_csv(csv_path)
     except pd.errors.EmptyDataError:
-        logger.warning("Phase 2 stationarity_results.csv 비어있음 — 적재 건너뜀", extra={"run_id": run_id})
+        logger.warning("Phase 2 stationarity_results.csv 비어있음, 적재 건너뜀", extra={"run_id": run_id})
         return 0
     except Exception as e:
         raise DBError(
@@ -41,7 +41,7 @@ async def load_stationarity_results(
         ) from e
 
     if df.empty or "integration_order" not in df.columns:
-        logger.warning("Phase 2 stationarity_results.csv 유효 데이터 없음 — 적재 건너뜀", extra={"run_id": run_id})
+        logger.warning("Phase 2 stationarity_results.csv 유효 데이터 없음, 적재 건너뜀", extra={"run_id": run_id})
         return 0
 
     # integration_order == 2 파생
@@ -118,7 +118,7 @@ async def load_stationarity_results(
         await session.rollback()
         raise DBError(
             "DB-TX-001",
-            "Phase 2 트랜잭션 롤백 — stationarity_results 적재 실패",
+            "Phase 2 트랜잭션 롤백: stationarity_results 적재 실패",
             {"run_id": run_id, "error": str(e)},
         ) from e
 

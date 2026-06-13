@@ -1,4 +1,4 @@
-"""Pydantic DTO — stat-snapshot, irf, ml-map 패널 엔드포인트 응답 스키마."""
+"""Pydantic DTO. stat-snapshot, irf, ml-map 패널 엔드포인트 응답 스키마."""
 from __future__ import annotations
 
 from typing import Annotated, Literal
@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 
 class StatSnapshotIQRResponse(BaseModel):
-    """metric=iqr — 롤링 IQR 박스플롯 데이터."""
+    """metric=iqr. 롤링 IQR 박스플롯 데이터."""
     anomaly_id: int
     metric: Literal["iqr"]
     period: str                     # YYYY-MM
@@ -21,7 +21,7 @@ class StatSnapshotIQRResponse(BaseModel):
 
 
 class StatSnapshotAsymmetryResponse(BaseModel):
-    """metric=asymmetry — 상승/하락 전이율 분포 히스토그램 데이터."""
+    """metric=asymmetry. 상승/하락 전이율 분포 히스토그램 데이터."""
     model_config = {"protected_namespaces": ()}
 
     anomaly_id: int

@@ -1,4 +1,4 @@
-"""Alembic env.py — SQLAlchemy 2.0 비동기(asyncpg) 환경."""
+"""Alembic env.py: SQLAlchemy 2.0 비동기(asyncpg) 환경."""
 from __future__ import annotations
 
 import asyncio

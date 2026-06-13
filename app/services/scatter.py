@@ -1,4 +1,4 @@
-"""산점도 비즈니스 로직 — GET /commodities/{id}/scatter."""
+"""산점도 비즈니스 로직. GET /commodities/{id}/scatter."""
 from __future__ import annotations
 
 from datetime import date

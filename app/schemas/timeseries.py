@@ -1,4 +1,4 @@
-"""Pydantic DTO — 시계열 응답 envelope + stream, scatter, raw-prices, stat-series 응답."""
+"""Pydantic DTO. 시계열 응답 envelope 및 stream, scatter, raw-prices, stat-series 응답."""
 from __future__ import annotations
 
 from datetime import date
@@ -8,7 +8,7 @@ from pydantic import BaseModel, field_validator
 
 
 def _validate_period(v: str | date | None) -> str | None:
-    """YYYY-MM 형식 강제. date → YYYY-MM 변환."""
+    """YYYY-MM 형식 강제. date이면 YYYY-MM으로 변환."""
     if v is None:
         return None
     if isinstance(v, date):
@@ -164,10 +164,10 @@ class AnomalyDensityPoint(BaseModel):
 
 
 class StreamMinimapResponse(StreamResponse):
-    """스트림 미니맵 — StreamResponse + anomaly_density."""
+    """스트림 미니맵. StreamResponse에 anomaly_density 포함."""
     anomaly_density: list[AnomalyDensityPoint] = []
 
 
 class RawPricesMinimapResponse(RawPricesResponse):
-    """원시 시계열 미니맵 — RawPricesResponse + anomaly_density."""
+    """원시 시계열 미니맵. RawPricesResponse에 anomaly_density 포함."""
     anomaly_density: list[AnomalyDensityPoint] = []

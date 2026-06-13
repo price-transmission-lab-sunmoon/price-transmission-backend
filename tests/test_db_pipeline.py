@@ -1,4 +1,4 @@
-"""DB-PIPELINE 적재 로직 단위/통합 테스트 — AsyncMock 세션으로 실 DB 없이 실행."""
+"""DB-PIPELINE 적재 로직 단위/통합 테스트. AsyncMock 세션으로 실 DB 없이 실행한다."""
 from __future__ import annotations
 
 import os
@@ -131,7 +131,7 @@ def test_phase6_bp_dates_parse_ok():
 
 
 def test_phase6_bp_dates_parse_warn_on_failure():
-    """형식 불일치 시 DB-ARR-002 WARN → None 반환."""
+    """형식 불일치 시 DB-ARR-002 WARN 후 None을 반환한다."""
     from app.db.loader.phase6 import _parse_bp_dates
     result = _parse_bp_dates(["invalid-date"], "wheat", "D_prime")
     assert result is None  # WARN 후 NULL 적재

@@ -46,14 +46,14 @@ class PipelineError(ProjectError):
 
 
 class ParseError(ProjectError):
-    """DB→API 또는 API→FE 경계에서 발생하는 파싱 예외 (PARSE-*)."""
+    """DB에서 API, 또는 API에서 FE 경계에서 발생하는 파싱 예외 (PARSE-*)."""
     def __init__(self, code: str, message: str, context: dict | None = None, boundary: str = ""):
         super().__init__(code, message, context)
         self.boundary = boundary
 
 
 class ConfigError(ProjectError):
-    """설정·환경 변수 예외 (CFG-*). FATAL — 부팅 중단."""
+    """설정 및 환경 변수 예외 (CFG-*). FATAL. 부팅 중단."""
     pass
 
 
@@ -73,7 +73,7 @@ class ExternalAPIError(ProjectError):
 
 
 def _format_chain(chain: list[Exception]) -> str:
-    """예외 체인을 ORIGIN → 현재 순으로 포맷팅."""
+    """예외 체인을 ORIGIN부터 현재까지 순서대로 포맷팅."""
     lines: list[str] = []
     for i, exc in enumerate(chain):
         if isinstance(exc, ProjectError):
@@ -93,12 +93,12 @@ def _format_chain(chain: list[Exception]) -> str:
 
 
 def trace_error_chain(exc: Exception) -> dict:
-    """예외 체인을 역추적하여 ORIGIN·전파 경로·포맷 문자열 반환.
+    """예외 체인을 역추적하여 ORIGIN, 전파 경로, 포맷 문자열 반환.
 
     Returns:
         {
             "origin": Exception,       # 최초 발생 예외
-            "chain": list[Exception],  # ORIGIN → 현재 순서
+            "chain": list[Exception],  # ORIGIN부터 현재 순서
             "formatted": str,          # 로그 출력용 문자열
         }
     """
@@ -123,7 +123,7 @@ def _error_body(code: str, message: str, context: dict | None = None) -> dict:
 
 
 async def api_error_handler(request: Request, exc: APIError) -> JSONResponse:
-    """APIError → http_status / public_code 반환."""
+    """APIError를 http_status, public_code로 변환하여 반환."""
     result = trace_error_chain(exc)
     logger.error(
         result["formatted"],
@@ -137,7 +137,7 @@ async def api_error_handler(request: Request, exc: APIError) -> JSONResponse:
 
 
 async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
-    """Pydantic 검증 실패 → 400 / API-VAL-001."""
+    """Pydantic 검증 실패 시 400, API-VAL-001 반환."""
     errors = exc.errors()
     ctx = {
         "loc": str(errors[0].get("loc")) if errors else "",
@@ -154,7 +154,7 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
 
 
 async def internal_error_handler(request: Request, exc: Exception) -> JSONResponse:
-    """DBError / PipelineError / ParseError / ExternalAPIError / 기타 → 500 / INTERNAL_ERROR.
+    """DBError, PipelineError, ParseError, ExternalAPIError, 기타 예외 시 500, INTERNAL_ERROR 반환.
 
     ORIGIN 코드를 보존하여 로깅하고, 사용자에게는 INTERNAL_ERROR만 노출한다.
     """

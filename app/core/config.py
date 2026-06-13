@@ -30,7 +30,7 @@ class Settings(BaseSettings):
 
     frame_version: str = "0.1.0"
 
-    # 파이프라인 문서 버전 — manifest와 일치 유지
+    # 파이프라인 문서 버전. manifest와 일치 유지
     pipeline_spec_version: str = "v10"
 
     # Redis 캐싱 파라미터
@@ -71,7 +71,7 @@ class Settings(BaseSettings):
 
 
 def get_settings() -> Settings:
-    """설정 로딩 — 필수 변수 누락/범위 위반 유형별 ConfigError 분리."""
+    """설정 로딩. 필수 변수 누락 또는 범위 위반 시 유형별 ConfigError 분리."""
     try:
         return Settings()
     except ValidationError as e:

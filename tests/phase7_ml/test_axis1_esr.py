@@ -1,4 +1,4 @@
-"""축 1 — 외부 충격 회수율(ESR_ml) 산출."""
+"""축 1: 외부 충격 회수율(ESR_ml) 산출."""
 
 import sys
 import os

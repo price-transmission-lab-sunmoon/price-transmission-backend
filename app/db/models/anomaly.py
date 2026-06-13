@@ -1,4 +1,4 @@
-"""ORM 모델 — anomaly_results, asymmetry_results 및 관련 테이블."""
+"""ORM 모델: anomaly_results, asymmetry_results 및 관련 테이블."""
 from sqlalchemy import (
     TIMESTAMP,
     Boolean,
@@ -189,7 +189,7 @@ class Baseline(Base):
 
 
 class IRFData(Base):
-    """Phase 4 IRF 곡선. irf_peak_horizon·irf_peak_magnitude 는 horizon=0 행에만 저장."""
+    """Phase 4 IRF 곡선. irf_peak_horizon, irf_peak_magnitude 는 horizon=0 행에만 저장."""
     __tablename__ = "irf_data"
 
     id = Column(Integer, primary_key=True, autoincrement=True)

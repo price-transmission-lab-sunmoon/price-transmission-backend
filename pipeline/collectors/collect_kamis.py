@@ -1,7 +1,7 @@
-"""KAMIS monthlySalesList — 쇠고기·땅콩·바나나·오렌지 월별 도매가(중도매인 판매가격) 수집.
+"""KAMIS monthlySalesList를 이용한 쇠고기, 땅콩, 바나나, 오렌지 월별 도매가(중도매인 판매가격) 수집.
 
 monthlySalesList 품목 코드(dailyPrice와 다름): 땅콩=314, 바나나=418, 오렌지=421.
-productclscode "02" = 중도매인 판매가격. p_period=3 → 기준연도 포함 4개년 반환.
+productclscode "02" = 중도매인 판매가격. p_period=3 설정 시 기준연도 포함 4개년 반환.
 """
 
 import os
@@ -55,7 +55,7 @@ KAMIS_TARGETS = [
 
 
 def fetch_monthly(cat_code, item_code, yyyy, period="3", max_retries=3):
-    """monthlySalesList API 호출. period="3" → 기준연도 포함 4개년 반환."""
+    """monthlySalesList API 호출. period="3" 설정 시 기준연도 포함 4개년 반환."""
     params = {
         "action": "monthlySalesList",
         "p_cert_key": CERT_KEY,

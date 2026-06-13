@@ -1,12 +1,12 @@
-"""Phase 7-ML — ml_scores + ml_projections 적재
+"""Phase 7-ML. ml_scores 및 ml_projections 적재
 
 입력:
   data/processed/phase7_ml/predictions/{cid}_{seg}_ml_predictions.csv (20개)
   data/processed/phase7_ml/features/{cid}_{seg}_features.csv (20개)
 
 적재 대상:
-  ml_scores       — 품목 × 구간 × 월 단위 모델별 점수 + percentile + 앙상블
-  ml_projections  — PCA 2D 좌표 (3행 / 관측치, 모델별)
+  ml_scores: 품목, 구간, 월 단위 모델별 점수와 percentile, 앙상블
+  ml_projections: PCA 2D 좌표 (관측치당 3행, 모델별)
 """
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ def _read_predictions() -> pd.DataFrame:
 
 
 def _compute_percentiles(df: pd.DataFrame) -> pd.DataFrame:
-    """segment 단위 percentile 산출 — IF/LOF/SVM 모두 낮을수록 이상이므로 ascending=False."""
+    """segment 단위 percentile 산출. IF/LOF/SVM 모두 낮을수록 이상이므로 ascending=False."""
     df = df.copy()
     group = df.groupby(["commodity_id", "segment_id"])
     for src, dst in (
@@ -72,7 +72,7 @@ def _compute_percentiles(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _force_bool(val) -> bool:
-    """NaN/None → False 강제."""
+    """NaN이나 None이면 False로 강제 변환한다."""
     if val is None:
         return False
     if isinstance(val, float) and math.isnan(val):
@@ -81,10 +81,10 @@ def _force_bool(val) -> bool:
 
 
 async def load_ml_scores(session: AsyncSession, run_id: int) -> int:
-    """predictions CSV → ml_scores INSERT. 적재 행 수 반환."""
+    """predictions CSV를 읽어 ml_scores에 INSERT한다. 적재 행 수를 반환한다."""
     df = _read_predictions()
     if df.empty:
-        logger.warning("phase7_ml/predictions/*.csv 없음 — ml_scores 0행")
+        logger.warning("phase7_ml/predictions/*.csv 없음, ml_scores 0행")
         await session.execute(text("DELETE FROM ml_scores"))
         return 0
 
@@ -176,7 +176,7 @@ def _compute_pca_projections(
     features_df: pd.DataFrame,
     predictions_df: pd.DataFrame,
 ) -> pd.DataFrame:
-    """(cid, seg) 단위 StandardScaler → PCA(n=2) 후 predictions 머지."""
+    """(cid, seg) 단위로 StandardScaler 정규화 후 PCA(n=2)를 적용하고 predictions를 머지한다."""
     from sklearn.decomposition import PCA
     from sklearn.preprocessing import StandardScaler
 
@@ -230,10 +230,10 @@ def _compute_pca_projections(
 
 
 async def load_ml_projections(session: AsyncSession, run_id: int) -> int:
-    """features CSV → PCA → ml_projections INSERT. 관측치 × 3행 반환."""
+    """features CSV를 읽어 PCA 적용 후 ml_projections에 INSERT한다. 관측치당 3행을 반환한다."""
     features_df = _read_features()
     if features_df.empty:
-        logger.warning("phase7_ml/features/*.csv 없음 — ml_projections 0행")
+        logger.warning("phase7_ml/features/*.csv 없음, ml_projections 0행")
         await session.execute(text("DELETE FROM ml_projections"))
         return 0
 
@@ -292,7 +292,7 @@ async def load_ml_projections(session: AsyncSession, run_id: int) -> int:
 
 
 async def load_phase7_ml(session: AsyncSession, run_id: int) -> dict[str, int]:
-    """Phase 7-ML 단일 트랜잭션 — ml_scores + ml_projections 적재."""
+    """Phase 7-ML 단일 트랜잭션: ml_scores 및 ml_projections 적재."""
     try:
         scores_count = await load_ml_scores(session, run_id)
         proj_count = await load_ml_projections(session, run_id)
@@ -303,7 +303,7 @@ async def load_phase7_ml(session: AsyncSession, run_id: int) -> dict[str, int]:
             raise
         raise DBError(
             "DB-TX-001",
-            "Phase 7-ML 트랜잭션 롤백 — ml_scores/ml_projections 적재 실패",
+            "Phase 7-ML 트랜잭션 롤백: ml_scores/ml_projections 적재 실패",
             {"run_id": run_id, "error": str(e)},
         ) from e
 

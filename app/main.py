@@ -1,4 +1,4 @@
-"""FastAPI 진입점 — lifespan, CORS, 전역 예외 핸들러, 라우터 등록."""
+"""FastAPI 진입점. lifespan, CORS, 전역 예외 핸들러, 라우터 등록."""
 from __future__ import annotations
 
 import io
@@ -50,12 +50,12 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         if settings.app_env == "development":
             logger.warning(
-                "PostgreSQL 연결 실패 — development 모드이므로 기동 계속",
+                "PostgreSQL 연결 실패. development 모드이므로 기동 계속",
                 extra={"error_code": "CFG-CORE-001", "context": {"error": str(e)}},
             )
         else:
             logger.critical(
-                "PostgreSQL 연결 실패 — 서버 기동 중단",
+                "PostgreSQL 연결 실패. 서버 기동 중단",
                 extra={"error_code": "CFG-CORE-001", "context": {"error": str(e)}},
             )
             raise ConfigError(
@@ -67,7 +67,7 @@ async def lifespan(app: FastAPI):
     redis_ok = await ping_redis()
     if not redis_ok and settings.app_env != "development":
         logger.critical(
-            "Redis 연결 실패 — 서버 기동 중단",
+            "Redis 연결 실패. 서버 기동 중단",
             extra={"error_code": "CFG-CORE-001", "context": {}},
         )
         raise ConfigError("CFG-CORE-001", "Redis 연결 실패")
@@ -77,7 +77,7 @@ async def lifespan(app: FastAPI):
     _scheduler = init_scheduler()
     _scheduler.start()
     logger.info(
-        "APScheduler 시작 — 월별 배치 스케줄 등록",
+        "APScheduler 시작. 월별 배치 스케줄 등록",
         extra={"error_code": "BOOT", "context": {}},
     )
 

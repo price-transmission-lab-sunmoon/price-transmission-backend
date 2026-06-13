@@ -1,4 +1,4 @@
-"""원시 시계열·미니맵 비즈니스 로직.
+"""원시 시계열, 미니맵 비즈니스 로직.
 
 엔드포인트: GET /commodities/{id}/raw-prices
             GET /commodities/{id}/raw-prices/minimap
@@ -26,7 +26,7 @@ from app.schemas.timeseries import (
 from app.services.aggregation import aggregate_by_granularity, build_anomaly_density
 from app.services.stream import _clamp_range, _parse_yyyymm, _safe_float, _safe_period
 
-# DB 컬럼명 → (label_kr, color_hint, index_column)
+# DB 컬럼명을 (label_kr, color_hint, index_column) 튜플로 매핑
 _SOURCE_META: dict[str, tuple[str, str, str]] = {
     "intl_price_krw":  ("국제가 (원화 환산)",        "purple", "intl_price_krw_idx"),
     "import_price_usd": ("수입단가",                 "orange", "import_price_idx"),
@@ -50,16 +50,16 @@ _LAYOUT_SOURCES_3SEG: dict[int, list[str]] = {
     2: ["intl_price_krw", "import_price_usd"],
     3: ["import_price_usd", "ppi"],
     # 4: 에러 (API-LAY-002)
-    5: ["ppi", "cpi"],  # wholesale→ppi 자동 폴백 (D-12)
+    5: ["ppi", "cpi"],  # wholesale 대신 ppi로 자동 폴백 (D-12)
     6: ["intl_price_krw", "import_price_usd", "ppi", "cpi"],
 }
 
 
 def _resolve_sources(layout: int, route_type: str, commodity_id: str) -> list[str]:
-    """레이아웃 + route_type → DB 컬럼 목록 반환.
+    """레이아웃, route_type을 받아 DB 컬럼 목록 반환.
 
-    3구간 품목 레이아웃 4 → API-LAY-002.
-    3구간 품목 레이아웃 5 → PPI-CPI 자동 폴백 (에러 없음, D-12).
+    3구간 품목 레이아웃 4이면 API-LAY-002.
+    3구간 품목 레이아웃 5이면 PPI-CPI 자동 폴백 (에러 없음, D-12).
     """
     if layout < 1 or layout > 6:
         raise APIError(
@@ -89,9 +89,9 @@ def _build_transmission_overlay(
     commodity_segments: list[str],
     granularity: str,
 ) -> list[TransmissionOverlaySeries]:
-    """stat_timeseries 행 → 구간별 전이율 오버레이 (raw-prices 레이아웃 2~6).
+    """stat_timeseries 행에서 구간별 전이율 오버레이 조립 (raw-prices 레이아웃 2~6).
 
-    get_raw_prices / get_raw_prices_minimap 양쪽에서 동일했던 조립 로직 통합.
+    get_raw_prices, get_raw_prices_minimap 양쪽에서 동일했던 조립 로직 통합.
     """
     seg_anomaly: dict[tuple[str, date], list[int]] = defaultdict(list)
     for ar in anomaly_rows:
@@ -156,7 +156,7 @@ async def get_raw_prices(
             public_code="INVALID_GRANULARITY",
         )
 
-    # 2. 레이아웃 → 소스 결정 (API-LAY-001, API-LAY-002)
+    # 2. 레이아웃에서 소스 결정 (API-LAY-001, API-LAY-002)
     sources = _resolve_sources(layout, route_type, commodity_id)
 
     # 3. 날짜 파싱 및 클램핑
@@ -189,7 +189,7 @@ async def get_raw_prices(
             public_code="INTERNAL_ERROR",
         ) from e
 
-    # 5. warmup 전용 체크 (API-STR-001) — stat_timeseries로 warmup 여부 판단
+    # 5. warmup 전용 체크 (API-STR-001). stat_timeseries로 warmup 여부 판단
     try:
         wm_result = await db.execute(
             select(StatTimeseries.in_warmup_period)
@@ -243,12 +243,12 @@ async def get_raw_prices(
             public_code="INTERNAL_ERROR",
         ) from e
 
-    # period → anomaly_id 목록 (raw_prices는 commodity 단위이므로 구간 무관 합산)
+    # period별 anomaly_id 목록 (raw_prices는 commodity 단위이므로 구간 무관 합산)
     period_anomaly_ids: dict[date, list[int]] = defaultdict(list)
     for ar in anomaly_rows:
         period_anomaly_ids[ar.period].append(ar.id)
 
-    # 7. 소스별 월 포인트 조립 → granularity 집계 → RawPriceSeries
+    # 7. 소스별 월 포인트 조립 후 granularity 집계, RawPriceSeries 생성
     series: list[RawPriceSeries] = []
     total_points = 0
 
@@ -292,7 +292,7 @@ async def get_raw_prices(
     if total_points == 0 and series:
         total_points = max(len(s.data) for s in series) if series else 0
 
-    # 8. transmission_overlay — 레이아웃 2~6에서만 포함
+    # 8. transmission_overlay. 레이아웃 2~6에서만 포함
     transmission_overlay: list[TransmissionOverlaySeries] = []
     if layout != 1:
         try:
@@ -358,8 +358,8 @@ async def get_raw_prices_minimap(
     analysis_end: date,
     layout: int,
 ) -> RawPricesMinimapResponse:
-    """원시 시계열 미니맵 — 전체 기간 yearly 고정 + anomaly_density."""
-    # 1. 레이아웃 → 소스 결정 (API-LAY-001, API-LAY-002)
+    """원시 시계열 미니맵. 전체 기간 yearly 고정, anomaly_density 포함."""
+    # 1. 레이아웃에서 소스 결정 (API-LAY-001, API-LAY-002)
     sources = _resolve_sources(layout, route_type, commodity_id)
 
     actual_from = analysis_start
@@ -464,7 +464,7 @@ async def get_raw_prices_minimap(
     if total_points == 0 and series:
         total_points = max(len(s.data) for s in series) if series else 0
 
-    # 6. transmission_overlay — 미니맵도 layout 2~6이면 포함
+    # 6. transmission_overlay. 미니맵도 layout 2~6이면 포함
     transmission_overlay: list[TransmissionOverlaySeries] = []
     if layout != 1:
         try:

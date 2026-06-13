@@ -26,7 +26,7 @@ PHASES: list[str] = ["0", "1", "2", "3", "4", "5", "6", "7", "7-ml"]
 
 
 def _call_pipeline(fn, *args, **kwargs):
-    """파이프라인 함수 호출 — stdout을 StringIO로 흡수해 인코딩 오류 방지."""
+    """파이프라인 함수 호출. stdout을 StringIO로 흡수해 인코딩 오류 방지."""
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         result = fn(*args, **kwargs)
@@ -40,7 +40,7 @@ def _call_pipeline(fn, *args, **kwargs):
 
 
 async def _run_phase(phase: str, run_id: int) -> None:
-    """Phase 실행 — 파이프라인 계산 + DB 적재."""
+    """Phase 실행. 파이프라인 계산 후 DB 적재."""
     root = Path(settings.pipeline_data_root)
 
     logger.info(
@@ -172,7 +172,7 @@ async def _run_phase(phase: str, run_id: int) -> None:
 
     else:
         logger.warning(
-            f"알 수 없는 Phase {phase} — skip",
+            f"알 수 없는 Phase {phase}. skip",
             extra={"error_code": "BATCH", "context": {"phase": phase, "run_id": run_id}},
         )
 
@@ -194,7 +194,7 @@ async def _prepare_run(
         existing = result.scalar_one_or_none()
         if existing is not None:
             logger.warning(
-                "배치 중복 실행 감지 — 실행 skip (API-BATCH-002)",
+                "배치 중복 실행 감지. 실행 skip (API-BATCH-002)",
                 extra={
                     "error_code": "API-BATCH-002",
                     "context": {
@@ -260,7 +260,7 @@ async def _execute_phases(
     data_up_to: date,
     next_run_date: date,
 ) -> None:
-    """Phase 0~7-ML 순차 호출 및 최종 status·data_freshness 갱신."""
+    """Phase 0~7-ML 순차 호출 및 최종 status, data_freshness 갱신."""
     phases_run: list[str] = []
     error_message: Optional[str] = None
     status = "completed"
@@ -298,7 +298,7 @@ async def _execute_phases(
         if error_message is None:
             error_message = str(exc)
         logger.error(
-            "APScheduler 월별 배치 예외 — pipeline_runs.status='failed' 기록 (API-BATCH-001)",
+            "APScheduler 월별 배치 예외. pipeline_runs.status='failed' 기록 (API-BATCH-001)",
             extra={
                 "error_code": "API-BATCH-001",
                 "context": {
@@ -366,13 +366,13 @@ async def _execute_phases(
         await invalidate_cache(run_id)
 
     logger.info(
-        f"배치 {status} 완료 — run_id={run_id}, run_date={run_date}",
+        f"배치 {status} 완료. run_id={run_id}, run_date={run_date}",
         extra={"error_code": "BATCH", "context": {"run_id": run_id, "status": status}},
     )
 
 
 def _calc_dates(run_date: date) -> tuple[date, date]:
-    """배치 실행일 → data_up_to, next_run_date 계산."""
+    """배치 실행일에서 data_up_to, next_run_date 계산."""
     # data_up_to: 전월 1일
     if run_date.month == 1:
         data_up_to = date(run_date.year - 1, 12, 1)
@@ -400,7 +400,7 @@ async def start_batch(run_date: Optional[date] = None) -> dict:
 
 
 async def run_monthly_pipeline(run_date: Optional[date] = None) -> None:
-    """APScheduler cron 잡 진입점 — 초기화 + Phase 실행 일괄 처리."""
+    """APScheduler cron 잡 진입점. 초기화 후 Phase 실행 일괄 처리."""
     if run_date is None:
         run_date = date.today()
     started_at = datetime.now(timezone.utc)
@@ -425,7 +425,7 @@ async def invalidate_cache(pipeline_run_id: int) -> None:
     for pattern in patterns:
         count = await cache_delete_pattern(client, pattern)
         logger.info(
-            f"캐시 무효화 완료 — pattern={pattern}, deleted={count}, run_id={pipeline_run_id}",
+            f"캐시 무효화 완료. pattern={pattern}, deleted={count}, run_id={pipeline_run_id}",
             extra={
                 "error_code": "BATCH",
                 "context": {

@@ -1,4 +1,4 @@
-"""/anomalies 엔드포인트 — summary, detail, stat-series, stat-snapshot, irf, ml-map."""
+"""/anomalies 엔드포인트. summary, detail, stat-series, stat-snapshot, irf, ml-map."""
 from __future__ import annotations
 
 import logging
@@ -31,7 +31,7 @@ import redis.asyncio as aioredis
 logger = logging.getLogger("app")
 router = APIRouter()
 
-# iqr·asymmetry를 포함한 전체 허용 목록 — 서비스에서 SNAPSHOT_METRIC_ON_SERIES 분기
+# iqr, asymmetry를 포함한 전체 허용 목록. 서비스에서 SNAPSHOT_METRIC_ON_SERIES 분기
 _StatSeriesMetric = Literal[
     "transmission_rate", "zscore", "ect", "breakpoints", "iqr", "asymmetry"
 ]
@@ -74,8 +74,8 @@ async def get_stat_series(
     redis: aioredis.Redis = Depends(get_redis),
     db: AsyncSession = Depends(get_db),
 ) -> StatSeriesResponse:
-    """지표별 인라인 시계열 — Redis TTL 캐싱 적용."""
-    # metric=iqr·asymmetry는 SNAPSHOT_METRIC_ON_SERIES(400), from > to는 INVALID_DATE_RANGE(400)
+    """지표별 인라인 시계열. Redis TTL 캐싱 적용."""
+    # metric=iqr 또는 asymmetry이면 SNAPSHOT_METRIC_ON_SERIES(400), from > to이면 INVALID_DATE_RANGE(400)
     cache_key = (
         f"{settings.redis_cache_prefix}:stat-series:"
         f"{anomaly_id}:{metric}:{from_ or 'default'}:{to or 'default'}:{granularity}"
@@ -93,7 +93,7 @@ async def get_stat_series(
         except ValidationError as e:
             # 캐시값 스키마 불일치 시 무효화 후 DB 재조회
             logger.warning(
-                "Redis 캐시값 Pydantic 검증 실패 — 캐시 무효화 후 DB 재조회 (PARSE-REDIS-001)",
+                "Redis 캐시값 Pydantic 검증 실패. 캐시 무효화 후 DB 재조회 (PARSE-REDIS-001)",
                 extra={
                     "error_code": "PARSE-REDIS-001",
                     "context": {
@@ -121,7 +121,7 @@ async def get_stat_snapshot(
 ) -> StatSnapshotIQRResponse | StatSnapshotAsymmetryResponse:
     """비시계열 지표 스냅샷.
 
-    metric=iqr → StatSnapshotIQRResponse, metric=asymmetry → StatSnapshotAsymmetryResponse.
+    metric=iqr이면 StatSnapshotIQRResponse, metric=asymmetry이면 StatSnapshotAsymmetryResponse.
     """
     if metric == "iqr":
         return await anomaly_panel.get_stat_snapshot_iqr(anomaly_id, db)
@@ -136,7 +136,7 @@ async def get_irf(
     ] = True,
     db: AsyncSession = Depends(get_db),
 ) -> IRFResponse:
-    """IRF 차트 데이터 — include_subperiods=true 시 하위 기간별 곡선·CI 포함."""
+    """IRF 차트 데이터. include_subperiods=true이면 하위 기간별 곡선, CI 포함."""
     return await anomaly_panel.get_irf(anomaly_id, include_subperiods, db)
 
 
@@ -149,7 +149,7 @@ async def get_ml_map(
     ] = "isolation_forest",
     projection_method: Annotated[
         Literal["pca", "feature_direct"],
-        Query(description="투영 방식 (OI-15 보류 — 현재 pca 고정)"),
+        Query(description="투영 방식 (OI-15 보류, 현재 pca 고정)"),
     ] = "pca",
     db: AsyncSession = Depends(get_db),
 ) -> MLMapResponse:

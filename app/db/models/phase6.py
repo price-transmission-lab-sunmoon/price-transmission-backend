@@ -1,4 +1,4 @@
-"""ORM models — Phase 6 계량 테이블 (breakpoints, subperiods)."""
+"""ORM models: Phase 6 계량 테이블 (breakpoints, subperiods)."""
 from __future__ import annotations
 
 from sqlalchemy import (
@@ -29,7 +29,7 @@ class Breakpoint(Base):
     # Bai-Perron 탐지 시점 목록, 파싱 실패 시 NULL
     bp_dates: Mapped[list | None] = mapped_column(ARRAY(Date))
 
-    # Chow Test 결과 — 고정 3개 시점
+    # Chow Test 결과. 고정 3개 시점
     chow_2008_f: Mapped[float | None] = mapped_column(Numeric(10, 4))
     chow_2008_pvalue: Mapped[float | None] = mapped_column(Numeric(8, 4))
     chow_2008_sig: Mapped[bool | None] = mapped_column(Boolean)

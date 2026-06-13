@@ -1,6 +1,6 @@
-"""Phase 5 — granger_results 적재 + cointegration_results.granger_direction 갱신.
+"""Phase 5: granger_results 적재 및 cointegration_results.granger_direction 갱신.
 
-컬럼명 매핑: segment→segment_id. best_lag 는 granger_results 에 없어 적재 제외.
+컬럼명 매핑: segment 는 segment_id 로 저장. best_lag 는 granger_results 에 없어 적재 제외.
 granger_direction UPDATE 는 동일 트랜잭션 내 수행.
 """
 from __future__ import annotations
@@ -35,7 +35,7 @@ async def load_granger_results(
     try:
         df = pd.read_csv(csv_path)
     except pd.errors.EmptyDataError:
-        logger.warning("Phase 5 granger_results.csv 비어있음 — 적재 건너뜀", extra={"run_id": run_id})
+        logger.warning("Phase 5 granger_results.csv 비어있음, 적재 건너뜀", extra={"run_id": run_id})
         return 0
     except Exception as e:
         raise DBError(
@@ -45,7 +45,7 @@ async def load_granger_results(
         ) from e
 
     if df.empty:
-        logger.warning("Phase 5 granger_results.csv 유효 데이터 없음 — 적재 건너뜀", extra={"run_id": run_id})
+        logger.warning("Phase 5 granger_results.csv 유효 데이터 없음, 적재 건너뜀", extra={"run_id": run_id})
         return 0
 
     try:
@@ -123,7 +123,7 @@ async def load_granger_results(
         await session.rollback()
         raise DBError(
             "DB-TX-001",
-            "Phase 5 트랜잭션 롤백 — granger_results 적재 실패",
+            "Phase 5 트랜잭션 롤백: granger_results 적재 실패",
             {"run_id": run_id, "error": str(e)},
         ) from e
 
