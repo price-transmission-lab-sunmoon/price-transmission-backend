@@ -1,4 +1,4 @@
-"""FastAPI 진입점 — lifespan, CORS, 전역 예외 핸들러, 라우터 등록."""
+"""FastAPI 진입점. lifespan, CORS, 전역 예외 핸들러, 라우터 등록."""
 from __future__ import annotations
 
 import io
@@ -6,7 +6,7 @@ import logging
 import sys
 from contextlib import asynccontextmanager
 
-# Windows cp949 환경에서 UTF-8 출력 강제 — pipeline 스크립트의 유니코드 문자 보호
+# Windows cp949 환경에서 UTF-8 출력 강제
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 if hasattr(sys.stderr, "reconfigure"):
@@ -31,16 +31,14 @@ from app.core.logging import setup_logging
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """애플리케이션 수명 주기 — 부팅 sanity check (frame_spec §5).
+    """부팅 시 DB/Redis 연결 확인 후 스케줄러 기동.
 
-    - development: DB/Redis 실패 시 WARN 후 기동 (더미 응답 시나리오 지원)
-    - production:  DB/Redis 실패 시 CFG-CORE-001 FATAL, 기동 중단
+    development 환경에서는 연결 실패 시 경고만 출력하고 계속 기동한다.
     """
     setup_logging(settings.log_level)
     logger = logging.getLogger("app")
     logger.info("서버 시작", extra={"error_code": "BOOT", "context": {"app_env": settings.app_env}})
 
-    # ── DB ping ───────────────────────────────────────────────────────────────
     import sqlalchemy
 
     from app.db.session import engine
@@ -52,12 +50,12 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         if settings.app_env == "development":
             logger.warning(
-                "PostgreSQL 연결 실패 — development 모드이므로 기동 계속",
+                "PostgreSQL 연결 실패. development 모드이므로 기동 계속",
                 extra={"error_code": "CFG-CORE-001", "context": {"error": str(e)}},
             )
         else:
             logger.critical(
-                "PostgreSQL 연결 실패 — 서버 기동 중단",
+                "PostgreSQL 연결 실패. 서버 기동 중단",
                 extra={"error_code": "CFG-CORE-001", "context": {"error": str(e)}},
             )
             raise ConfigError(
@@ -66,32 +64,28 @@ async def lifespan(app: FastAPI):
                 {"error": str(e)},
             ) from e
 
-    # ── Redis ping ────────────────────────────────────────────────────────────
     redis_ok = await ping_redis()
     if not redis_ok and settings.app_env != "development":
         logger.critical(
-            "Redis 연결 실패 — 서버 기동 중단",
+            "Redis 연결 실패. 서버 기동 중단",
             extra={"error_code": "CFG-CORE-001", "context": {}},
         )
         raise ConfigError("CFG-CORE-001", "Redis 연결 실패")
 
-    # ── APScheduler 시작 (feat/be-batch) ──────────────────────────────────────
     from app.services.batch import init_scheduler
 
     _scheduler = init_scheduler()
     _scheduler.start()
     logger.info(
-        "APScheduler 시작 — 월별 배치 스케줄 등록",
+        "APScheduler 시작. 월별 배치 스케줄 등록",
         extra={"error_code": "BOOT", "context": {}},
     )
 
     yield
 
-    # ── APScheduler 종료 ──────────────────────────────────────────────────────
     _scheduler.shutdown(wait=False)
     logger.info("APScheduler 종료", extra={"error_code": "BOOT", "context": {}})
 
-    # ── 종료 ──────────────────────────────────────────────────────────────────
     await close_redis()
     await engine.dispose()
     logger.info("서버 종료", extra={"error_code": "BOOT", "context": {}})
@@ -103,7 +97,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS (§8.10)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allowed_origins.split(","),
@@ -112,10 +105,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 전역 예외 핸들러 (§8.4)
 app.add_exception_handler(APIError, api_error_handler)
 app.add_exception_handler(RequestValidationError, validation_error_handler)
 app.add_exception_handler(Exception, internal_error_handler)
 
-# 라우터 등록 (prefix="/api/v1", §8.3)
 app.include_router(router)

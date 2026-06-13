@@ -1,22 +1,13 @@
-"""Phase 3 — cointegration_results 적재
-
-feature_spec_DB-PIPELINE_v2 §2 입력 데이터 기준.
-exception_design_v3 §2 에러 체이닝 패턴 준수.
+"""Phase 3: cointegration_results 적재.
 
 컬럼명 매핑:
-  segment        → segment_id
-  upstream       → upstream_col
-  downstream     → downstream_col
-  model_selected → model_type
-  trace_stat_r0  → trace_stat (pvalue는 Johansen 미제공 → NULL)
-  eigen_stat_r0  → maxeig_stat (pvalue는 Johansen 미제공 → NULL)
+  segment / upstream / downstream / model_selected
+    각각 segment_id / upstream_col / downstream_col / model_type 로 저장
+  trace_stat_r0 / eigen_stat_r0
+    각각 trace_stat / maxeig_stat 로 저장 (pvalue는 Johansen 미제공이므로 NULL)
 
-DB 전용 컬럼 (파이프라인 파일에 없음):
-  upstream_integration_order, downstream_integration_order → stationarity_results 조회
-  integration_order_match → 두 값 비교
-  coint_tested            → 양쪽 모두 I(1) 여부
-  coint_rank              → cointegrated=True → 1, False → 0
-  granger_direction       → NULL (Phase 5에서 UPDATE)
+DB 전용 컬럼: upstream/downstream_integration_order (stationarity_results 조회),
+  integration_order_match, coint_tested, coint_rank, granger_direction (Phase 5에서 UPDATE)
 """
 from __future__ import annotations
 
@@ -35,7 +26,6 @@ logger = logging.getLogger(__name__)
 
 
 async def _fetch_integration_orders(session: AsyncSession) -> dict[tuple[str, str], int]:
-    """stationarity_results 에서 (commodity_id, price_col) → integration_order 매핑 반환."""
     result = await session.execute(
         text("SELECT commodity_id, price_col, integration_order FROM stationarity_results")
     )
@@ -46,11 +36,7 @@ async def load_cointegration_results(
     session: AsyncSession,
     run_id: int,
 ) -> int:
-    """Phase 3 cointegration_results.csv → cointegration_results UPSERT.
-
-    UNIQUE KEY: (commodity_id, segment_id).
-    Returns upserted row count.
-    """
+    """cointegration_results.csv를 읽어 cointegration_results 테이블에 UPSERT한다."""
     csv_path = Path(settings.pipeline_data_root) / "phase3" / "cointegration_results.csv"
     if not csv_path.exists():
         raise DBError(
@@ -62,7 +48,7 @@ async def load_cointegration_results(
     try:
         df = pd.read_csv(csv_path)
     except pd.errors.EmptyDataError:
-        logger.warning("Phase 3 cointegration_results.csv 비어있음 — 적재 건너뜀", extra={"run_id": run_id})
+        logger.warning("Phase 3 cointegration_results.csv 비어있음, 적재 건너뜀", extra={"run_id": run_id})
         return 0
     except Exception as e:
         raise DBError(
@@ -72,7 +58,7 @@ async def load_cointegration_results(
         ) from e
 
     if df.empty:
-        logger.warning("Phase 3 cointegration_results.csv 유효 데이터 없음 — 적재 건너뜀", extra={"run_id": run_id})
+        logger.warning("Phase 3 cointegration_results.csv 유효 데이터 없음, 적재 건너뜀", extra={"run_id": run_id})
         return 0
 
     int_orders = await _fetch_integration_orders(session)
@@ -92,7 +78,6 @@ async def load_cointegration_results(
                 if upstream_io is not None and downstream_io is not None
                 else None
             )
-            # I(1) 쌍이면 공적분 검정 대상
             coint_tested = bool(upstream_io == 1 and downstream_io == 1)
 
             cointegrated_val = _v(row.get("cointegrated"))
@@ -101,7 +86,6 @@ async def load_cointegration_results(
 
             coint_rank = 1 if cointegrated_val else 0
 
-            # integration_flag 가 있으면 I(2) 포함 구간
             integration_flag_raw = row.get("integration_flag")
             i2_flag = not (pd.isna(integration_flag_raw) if integration_flag_raw is not None else True)
 
@@ -151,26 +135,25 @@ async def load_cointegration_results(
                     "integration_order_match": integration_order_match,
                     "coint_tested": coint_tested,
                     "trace_stat": _v(row.get("trace_stat_r0")),
-                    "trace_pvalue": None,   # Johansen 라이브러리 미제공
+                    "trace_pvalue": None,
                     "maxeig_stat": _v(row.get("eigen_stat_r0")),
-                    "maxeig_pvalue": None,  # Johansen 라이브러리 미제공
+                    "maxeig_pvalue": None,
                     "coint_rank": coint_rank,
                     "cointegrated": cointegrated_val,
                     "i2_flag": i2_flag,
                     "model_type": model_type_raw,
-                    "granger_direction": None,  # Phase 5에서 UPDATE
+                    "granger_direction": None,
                     "pipeline_run_id": run_id,
                 },
             )
         await session.commit()
-    except DBError:
-        await session.rollback()
-        raise
     except Exception as e:
         await session.rollback()
+        if isinstance(e, DBError):
+            raise
         raise DBError(
             "DB-TX-001",
-            "Phase 3 트랜잭션 롤백 — cointegration_results 적재 실패",
+            "Phase 3 트랜잭션 롤백: cointegration_results 적재 실패",
             {"run_id": run_id, "error": str(e)},
         ) from e
 

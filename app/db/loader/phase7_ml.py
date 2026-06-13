@@ -1,20 +1,12 @@
-"""Phase 7-ML — ml_scores + ml_projections 적재
-
-backend_reply_phase7ml_v2 합의안 기준:
-  - percentile: segment 내 rank(pct=True, ascending=False) * 100 — 3종 모두 (높을수록 이상)
-  - *_anomaly: NaN → False 강제, 항상 boolean
-  - ml_projections: PCA(n_components=2) — x_label='PC1', y_label='PC2' 고정
-    (cid, seg, period) × 3 model_name = 3행. 좌표 동일, anomaly_score/is_anomaly만 모델별 상이.
+"""Phase 7-ML. ml_scores 및 ml_projections 적재
 
 입력:
   data/processed/phase7_ml/predictions/{cid}_{seg}_ml_predictions.csv (20개)
   data/processed/phase7_ml/features/{cid}_{seg}_features.csv (20개)
 
 적재 대상:
-  ml_scores       — 품목 × 구간 × 월 단위 모델별 점수 + percentile + 앙상블
-  ml_projections  — PCA 2D 좌표 (3행 / 관측치, 모델별)
-
-D-14: ML 학습 단위는 품목×구간. percentile/PCA도 동일 단위로 산출.
+  ml_scores: 품목, 구간, 월 단위 모델별 점수와 percentile, 앙상블
+  ml_projections: PCA 2D 좌표 (관측치당 3행, 모델별)
 """
 from __future__ import annotations
 
@@ -34,8 +26,7 @@ logger = logging.getLogger(__name__)
 
 _PHASE7_ML_ROOT = Path(settings.pipeline_data_root) / "phase7_ml"
 
-# numeric(10,6) max ≈ 9999.999999. 안전 한도.
-SCORE_MAX = 9999.0
+SCORE_MAX = 9999.0  # numeric(10,6) 안전 한도
 
 
 def _F(val, limit: float = SCORE_MAX) -> float | None:
@@ -51,7 +42,6 @@ def _F(val, limit: float = SCORE_MAX) -> float | None:
 
 
 def _read_predictions() -> pd.DataFrame:
-    """phase7_ml/predictions/*.csv 모두 합쳐 단일 DataFrame 반환."""
     pred_dir = _PHASE7_ML_ROOT / "predictions"
     if not pred_dir.exists():
         return pd.DataFrame()
@@ -66,14 +56,7 @@ def _read_predictions() -> pd.DataFrame:
 
 
 def _compute_percentiles(df: pd.DataFrame) -> pd.DataFrame:
-    """segment 단위 percentile 산출 — 3종 score 모두 동일식 (회신 v2 §1.3).
-
-    핵심: IF/LOF/SVM 모두 'lower score = more anomalous'.
-      - IF: score_samples (낮을수록 이상)
-      - LOF: negative_outlier_factor_ (더 음수 = 이상)
-      - SVM: decision_function (음수 = 이상)
-    따라서 3종 모두 ascending=False로 rank → 높은 percentile = 더 이상.
-    """
+    """segment 단위 percentile 산출. IF/LOF/SVM 모두 낮을수록 이상이므로 ascending=False."""
     df = df.copy()
     group = df.groupby(["commodity_id", "segment_id"])
     for src, dst in (
@@ -89,7 +72,7 @@ def _compute_percentiles(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _force_bool(val) -> bool:
-    """*_anomaly NaN → False 강제 (회신 v2 §2.2)."""
+    """NaN이나 None이면 False로 강제 변환한다."""
     if val is None:
         return False
     if isinstance(val, float) and math.isnan(val):
@@ -98,20 +81,15 @@ def _force_bool(val) -> bool:
 
 
 async def load_ml_scores(session: AsyncSession, run_id: int) -> int:
-    """predictions CSV → ml_scores UPSERT.
-
-    Returns:
-        적재된 행 수.
-    """
+    """predictions CSV를 읽어 ml_scores에 INSERT한다. 적재 행 수를 반환한다."""
     df = _read_predictions()
     if df.empty:
-        logger.warning("phase7_ml/predictions/*.csv 없음 — ml_scores 0행")
+        logger.warning("phase7_ml/predictions/*.csv 없음, ml_scores 0행")
         await session.execute(text("DELETE FROM ml_scores"))
         return 0
 
     df = _compute_percentiles(df)
 
-    # 멱등 적재 — DELETE 후 INSERT (UNIQUE (cid, seg, period) 기준)
     await session.execute(text("DELETE FROM ml_scores"))
 
     rows = []
@@ -164,9 +142,6 @@ async def load_ml_scores(session: AsyncSession, run_id: int) -> int:
     return len(rows)
 
 
-# ── ml_projections (PCA) ─────────────────────────────────────────────────────
-
-# 6 피처 고정 (회신 v2 §2.2 + pipeline_output_spec_v9 §Phase 7-ML)
 _PCA_FEATURE_COLS = [
     "transmission_rate",
     "upstream_pct",
@@ -177,7 +152,6 @@ _PCA_FEATURE_COLS = [
 ]
 
 _MODEL_SCORE_MAP = [
-    # (model_name, score_col, anomaly_col)
     ("isolation_forest", "if_score", "if_anomaly"),
     ("lof", "lof_score", "lof_anomaly"),
     ("ocsvm", "svm_score", "svm_anomaly"),
@@ -185,7 +159,6 @@ _MODEL_SCORE_MAP = [
 
 
 def _read_features() -> pd.DataFrame:
-    """phase7_ml/features/*.csv 모두 합쳐 단일 DataFrame 반환."""
     feat_dir = _PHASE7_ML_ROOT / "features"
     if not feat_dir.exists():
         return pd.DataFrame()
@@ -203,17 +176,7 @@ def _compute_pca_projections(
     features_df: pd.DataFrame,
     predictions_df: pd.DataFrame,
 ) -> pd.DataFrame:
-    """segment 단위 PCA 산출 + predictions 머지.
-
-    각 (cid, seg) 그룹별로 StandardScaler → PCA(n=2). 결측 행은 제외.
-    predictions와 (cid, seg, date) 키로 머지하여 모델별 anomaly_score/is_anomaly 부착.
-
-    Returns:
-        DataFrame with columns:
-            commodity_id, segment_id, date, x_value, y_value,
-            (model별 long format은 적재 시점에 풀어냄)
-            if_score, lof_score, svm_score, if_anomaly, lof_anomaly, svm_anomaly
-    """
+    """(cid, seg) 단위로 StandardScaler 정규화 후 PCA(n=2)를 적용하고 predictions를 머지한다."""
     from sklearn.decomposition import PCA
     from sklearn.preprocessing import StandardScaler
 
@@ -226,7 +189,6 @@ def _compute_pca_projections(
         valid_mask = X.notna().all(axis=1)
         X_valid = X[valid_mask]
         if len(X_valid) < 2:
-            # PCA는 최소 2 관측치 필요
             continue
 
         scaler = StandardScaler()
@@ -250,13 +212,11 @@ def _compute_pca_projections(
     proj_df = pd.DataFrame(out_rows)
 
     if predictions_df.empty:
-        # score/anomaly 컬럼은 None으로 채움
         for _, score_col, anom_col in _MODEL_SCORE_MAP:
             proj_df[score_col] = None
             proj_df[anom_col] = False
         return proj_df
 
-    # predictions 머지
     pred_sel = predictions_df[[
         "commodity_id", "segment_id", "date",
         "if_score", "if_anomaly",
@@ -270,23 +230,16 @@ def _compute_pca_projections(
 
 
 async def load_ml_projections(session: AsyncSession, run_id: int) -> int:
-    """features CSV → PCA → ml_projections UPSERT.
-
-    한 관측치당 3행 (model_name = isolation_forest / lof / ocsvm). 좌표 동일.
-
-    Returns:
-        적재된 행 수 (관측치 × 3).
-    """
+    """features CSV를 읽어 PCA 적용 후 ml_projections에 INSERT한다. 관측치당 3행을 반환한다."""
     features_df = _read_features()
     if features_df.empty:
-        logger.warning("phase7_ml/features/*.csv 없음 — ml_projections 0행")
+        logger.warning("phase7_ml/features/*.csv 없음, ml_projections 0행")
         await session.execute(text("DELETE FROM ml_projections"))
         return 0
 
     predictions_df = _read_predictions()
     proj_df = _compute_pca_projections(features_df, predictions_df)
 
-    # 멱등 적재 — DELETE 후 INSERT
     await session.execute(text("DELETE FROM ml_projections"))
 
     if proj_df.empty:
@@ -338,26 +291,19 @@ async def load_ml_projections(session: AsyncSession, run_id: int) -> int:
     return len(rows)
 
 
-# ── 단일 트랜잭션 진입점 ──────────────────────────────────────────────────────
-
 async def load_phase7_ml(session: AsyncSession, run_id: int) -> dict[str, int]:
-    """Phase 7-ML 단일 트랜잭션 — ml_scores + ml_projections 적재.
-
-    Returns:
-        {"ml_scores": N, "ml_projections": M}
-    """
+    """Phase 7-ML 단일 트랜잭션: ml_scores 및 ml_projections 적재."""
     try:
         scores_count = await load_ml_scores(session, run_id)
         proj_count = await load_ml_projections(session, run_id)
         await session.commit()
-    except DBError:
-        await session.rollback()
-        raise
     except Exception as e:
         await session.rollback()
+        if isinstance(e, DBError):
+            raise
         raise DBError(
             "DB-TX-001",
-            "Phase 7-ML 트랜잭션 롤백 — ml_scores/ml_projections 적재 실패",
+            "Phase 7-ML 트랜잭션 롤백: ml_scores/ml_projections 적재 실패",
             {"run_id": run_id, "error": str(e)},
         ) from e
 

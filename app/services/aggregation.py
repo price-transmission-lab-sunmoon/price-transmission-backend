@@ -1,9 +1,4 @@
-"""시계열 granularity 집계 + 연도별 이상 밀도 — stream/raw_prices 공통.
-
-기존 stream._aggregate_monthly_points 와 raw_prices._aggregate_raw_monthly 가
-필드명만 다른 동일 로직이었으므로 필드 목록을 주입받는 단일 함수로 통합.
-year_density 집계도 두 서비스에 중복돼 있어 build_anomaly_density 로 추출.
-"""
+"""시계열 granularity 집계 및 연도별 이상 밀도. stream, raw_prices 공통."""
 from __future__ import annotations
 
 from collections import defaultdict
@@ -15,12 +10,12 @@ from app.schemas.timeseries import AnomalyDensityPoint
 
 
 def quarter_key(d: date) -> tuple[int, int]:
-    """(year, 0-indexed quarter) — 분기 마지막 월 기준 (api_spec_vN §granularity 동작 규칙)."""
+    """(year, 0-indexed quarter)."""
     return (d.year, (d.month - 1) // 3)
 
 
 def quarter_last_month(year: int, q0: int) -> date:
-    """분기 마지막 월 1일 반환 (3·6·9·12월)."""
+    """분기 마지막 월 1일 반환 (3, 6, 9, 12월)."""
     return date(year, (q0 + 1) * 3, 1)
 
 
@@ -46,11 +41,8 @@ def aggregate_by_granularity(
 ) -> list[dict]:
     """월 단위 포인트를 granularity로 집계.
 
-    avg_fields:    None 제외 평균
-    any_fields:    그룹 내 하나라도 True 면 True
-    concat_fields: 리스트 평탄화 결합 (anomaly_ids 등)
-    대표 기간: 분기 마지막 월 / 연도 12월 (api_spec_vN §granularity 동작 규칙).
-    monthly granularity면 원본 그대로 반환.
+    avg_fields: None 제외 평균, any_fields: 하나라도 True 면 True,
+    concat_fields: 리스트 평탄화 결합. monthly 이면 원본 그대로 반환.
     """
     if granularity == "monthly":
         return monthly
@@ -75,7 +67,7 @@ def aggregate_by_granularity(
 
 
 def build_anomaly_density(density_rows) -> list[AnomalyDensityPoint]:
-    """mv_anomaly_density_yearly 행 → 연도별 합산 AnomalyDensityPoint 목록 (구간 합산)."""
+    """mv_anomaly_density_yearly 행을 연도별 구간 합산 목록으로 변환."""
     year_density: dict[int, dict] = {}
     for dr in density_rows:
         y = int(dr.year)

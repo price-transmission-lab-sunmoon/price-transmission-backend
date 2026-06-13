@@ -1,12 +1,7 @@
 """0007_phase4_5_tables
 
-Phase 4~5 계량 테이블 수동 정의 (feature_spec_DB-PIPELINE_v2 §3.1, autogenerate 금지).
-포함 테이블: model_params, irf_data, granger_results
-+ baselines(0003)·cointegration_results(0004)의 subperiod_id FK 제약 추가
-
-* baselines 는 0003_add_baselines.py 에서 이미 정의됨 (subperiod_id 컬럼 있음, FK 없음).
-  이 revision 에서 ALTER TABLE 로 FK 제약만 추가한다.
-* subperiods(0006)가 먼저 생성되어야 FK 참조 가능.
+model_params, irf_data, granger_results 테이블 추가.
+baselines(0003)에 subperiod_id FK 제약 추가.
 
 Revision ID: 0007
 Revises: 0006
@@ -25,19 +20,15 @@ depends_on: str | None = None
 
 
 def upgrade() -> None:
-    # ── model_params ──────────────────────────────────────────────────────────
-    # db_schema_v5 §model_params 기준
-    # UNIQUE (commodity_id, segment_id, subperiod_id)
     op.create_table(
         "model_params",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("commodity_id", sa.String(20), nullable=False),
         sa.Column("segment_id", sa.String(10), nullable=False),
-        # NULL = 전체 기간 모형 (Phase 6 완료 전 기본값)
+        # NULL = 전체 기간 모형
         sa.Column("subperiod_id", sa.Integer(), nullable=True),
-        sa.Column("model_type", sa.String(10), nullable=False),   # 'VAR' | 'VECM'
+        sa.Column("model_type", sa.String(10), nullable=False),
         sa.Column("lag_selected", sa.SmallInteger(), nullable=False),
-        # Phase 3 시차 선택 기준 기록용 ('AIC' | 'BIC')
         sa.Column("lag_criterion", sa.String(10), nullable=False, server_default="AIC"),
         sa.Column("n_obs", sa.Integer(), nullable=False),
         sa.Column("estimation_start", sa.Date(), nullable=False),
@@ -73,9 +64,6 @@ def upgrade() -> None:
         ),
     )
 
-    # ── irf_data ──────────────────────────────────────────────────────────────
-    # db_schema_v5 §irf_data 기준
-    # UNIQUE (commodity_id, segment_id, subperiod_id, horizon)
     op.create_table(
         "irf_data",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
@@ -83,11 +71,11 @@ def upgrade() -> None:
         sa.Column("segment_id", sa.String(10), nullable=False),
         # NULL = 전체 기간
         sa.Column("subperiod_id", sa.Integer(), nullable=True),
-        sa.Column("horizon", sa.SmallInteger(), nullable=False),   # 0~24
+        sa.Column("horizon", sa.SmallInteger(), nullable=False),
         sa.Column("irf_downstream", sa.Numeric(12, 6), nullable=False),
         sa.Column("irf_lower_ci", sa.Numeric(12, 6), nullable=True),
         sa.Column("irf_upper_ci", sa.Numeric(12, 6), nullable=True),
-        # horizon=0 행에만 저장, 나머지 NULL (db_schema_v5 §irf_data 기준)
+        # horizon=0 행에만 저장, 나머지 NULL
         sa.Column("irf_peak_horizon", sa.SmallInteger(), nullable=True),
         sa.Column("irf_peak_magnitude", sa.Numeric(12, 6), nullable=True),
         sa.Column("pipeline_run_id", sa.Integer(), nullable=True),
@@ -120,22 +108,16 @@ def upgrade() -> None:
         ["commodity_id", "segment_id", "subperiod_id"],
     )
 
-    # ── granger_results ───────────────────────────────────────────────────────
-    # db_schema_v5 §granger_results 기준
-    # 4구간 품목(groundnuts, banana, orange) 구간 C만 존재
-    # UNIQUE (commodity_id, segment_id, direction)
     op.create_table(
         "granger_results",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("commodity_id", sa.String(20), nullable=False),
-        # DB 기본값 'C' (D-10: FK 추가)
         sa.Column("segment_id", sa.String(10), nullable=False, server_default="C"),
-        sa.Column("direction", sa.String(30), nullable=False),  # 'ppi_to_wholesale' | 'wholesale_to_ppi'
+        sa.Column("direction", sa.String(30), nullable=False),
         sa.Column("max_lag", sa.SmallInteger(), nullable=False),
         sa.Column("f_stat", sa.Numeric(10, 4), nullable=True),
         sa.Column("pvalue", sa.Numeric(8, 4), nullable=True),
         sa.Column("significant", sa.Boolean(), nullable=False),
-        # 'ppi_to_wholesale' | 'wholesale_to_ppi' | 'bidirectional' | 'none'
         sa.Column("confirmed_direction", sa.String(30), nullable=True),
         sa.Column("pipeline_run_id", sa.Integer(), nullable=True),
         sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")),
@@ -158,9 +140,7 @@ def upgrade() -> None:
         ),
     )
 
-    # ── baselines.subperiod_id FK 추가 ────────────────────────────────────────
-    # 0003_add_baselines.py 에서 컬럼만 선언했고 FK가 없었음.
-    # subperiods(0006) 생성 후 이 revision 에서 FK 제약 추가.
+    # 0003에서 컬럼만 선언, subperiods(0006) 생성 후 FK 추가
     op.create_foreign_key(
         "fk_baselines_subperiod_id_subperiods",
         "baselines", "subperiods",

@@ -1,21 +1,14 @@
-"""Phase 6 — breakpoints / subperiods 적재
+"""Phase 6: breakpoints / subperiods 적재.
 
-feature_spec_DB-PIPELINE_v2 §2 입력 데이터 기준.
-exception_design_v3 §2 에러 체이닝 패턴 준수.
+JSON 필드명 매핑:
+  segment 는 segment_id 로 저장.
+  bai_perron_breakpoints 는 bp_dates DATE[] 로 저장.
+  chow_test_points["2008/2020/2022-01"] 는 chow_*_f / _pvalue / _sig 로 저장.
+  subperiods[].id/start/end/merged_with 는
+    각각 subperiod_index / period_start / period_end / merged_with_index 로 저장.
 
-JSON 필드명 매핑 (D-07):
-  segment                     → segment_id
-  bai_perron_breakpoints      → bp_dates DATE[] ("YYYY-MM" → "YYYY-MM-01")
-  chow_test_points["2008-01"] → chow_2008_f / chow_2008_pvalue / chow_2008_sig
-  chow_test_points["2020-01"] → chow_2020_f / chow_2020_pvalue / chow_2020_sig
-  chow_test_points["2022-01"] → chow_2022_f / chow_2022_pvalue / chow_2022_sig
-  subperiods[].id             → subperiod_index
-  subperiods[].start          → period_start DATE
-  subperiods[].end            → period_end DATE
-  subperiods[].merged_with    → merged_with_index
-
-bp_dates 파싱 실패: DB-ARR-002 WARN → NULL 적재 (D-07).
-bp_best_k / bic_scores: db_schema_v5 미포함 컬럼 → 적재 제외.
+bp_dates 파싱 실패 시 DB-ARR-002 WARN 후 NULL 적재.
+bp_best_k / bic_scores 는 DB 미포함이므로 적재 제외.
 """
 from __future__ import annotations
 
@@ -38,10 +31,7 @@ _PHASE6_ROOT = Path(settings.pipeline_data_root) / "phase6"
 
 
 def _parse_bp_dates(raw_list: list[str], cid: str, seg: str) -> list[date] | None:
-    """'YYYY-MM' 문자열 배열 → DATE[] 월초 승격.
-
-    파싱 실패 시 DB-ARR-002 WARN 후 None 반환 (D-07).
-    """
+    """'YYYY-MM' 배열을 DATE[] 월초 형식으로 변환한다. 파싱 실패 시 WARN 후 None 반환."""
     if not raw_list:
         return []
     parsed: list[date] = []
@@ -52,7 +42,7 @@ def _parse_bp_dates(raw_list: list[str], cid: str, seg: str) -> list[date] | Non
             parsed.append(d)
         except Exception as exc:
             logger.warning(
-                "DB-ARR-002 — bp_dates 파싱 실패, NULL 적재",
+                "DB-ARR-002: bp_dates 파싱 실패, NULL 적재",
                 extra={"commodity_id": cid, "segment_id": seg, "raw": raw, "error": str(exc)},
             )
             return None
@@ -60,7 +50,6 @@ def _parse_bp_dates(raw_list: list[str], cid: str, seg: str) -> list[date] | Non
 
 
 def _chow(points: dict, key: str) -> tuple:
-    """chow_test_points[key] → (f_stat, pvalue, significant)."""
     pt = points.get(key, {})
     if not pt:
         return None, None, None
@@ -75,10 +64,7 @@ async def load_phase6(
     session: AsyncSession,
     run_id: int,
 ) -> dict[str, int]:
-    """Phase 6 단일 트랜잭션 — breakpoints, subperiods 적재.
-
-    Returns dict with row counts per table.
-    """
+    """Phase 6 단일 트랜잭션: breakpoints, subperiods 적재."""
     bp_root = _PHASE6_ROOT / "breakpoints"
     files = sorted(bp_root.glob("*_breakpoints.json")) if bp_root.exists() else []
 
@@ -92,17 +78,14 @@ async def load_phase6(
             cid = str(data["commodity_id"])
             seg = str(data.get("segment", data.get("segment_id", "")))
 
-            # bp_dates 파싱 (DB-ARR-002 WARN on failure)
             raw_bp = data.get("bai_perron_breakpoints", [])
             bp_dates = _parse_bp_dates(raw_bp, cid, seg)
 
-            # Chow Test 결과
             chow_pts = data.get("chow_test_points", {})
             f2008, p2008, s2008 = _chow(chow_pts, "2008-01")
             f2020, p2020, s2020 = _chow(chow_pts, "2020-01")
             f2022, p2022, s2022 = _chow(chow_pts, "2022-01")
 
-            # ── breakpoints UPSERT ─────────────────────────────────────────────
             await session.execute(
                 text("""
                     INSERT INTO breakpoints (
@@ -143,14 +126,12 @@ async def load_phase6(
             )
             bp_count += 1
 
-            # ── subperiods UPSERT ──────────────────────────────────────────────
             for sp in data.get("subperiods", []):
                 period_start = normalize_yyyymm_to_date(str(sp["start"]))
                 period_end = normalize_yyyymm_to_date(str(sp["end"]))
                 validate_period_day(period_start, "subperiods")
                 validate_period_day(period_end, "subperiods")
 
-                # JSON id == subperiod_index (1-based)
                 sp_index = int(sp["id"])
                 merged_with = sp.get("merged_with")
 
@@ -186,14 +167,13 @@ async def load_phase6(
                 sp_count += 1
 
         await session.commit()
-    except DBError:
-        await session.rollback()
-        raise
     except Exception as e:
         await session.rollback()
+        if isinstance(e, DBError):
+            raise
         raise DBError(
             "DB-TX-001",
-            "Phase 6 트랜잭션 롤백 — breakpoints/subperiods 적재 실패",
+            "Phase 6 트랜잭션 롤백: breakpoints/subperiods 적재 실패",
             {"run_id": run_id, "error": str(e)},
         ) from e
 

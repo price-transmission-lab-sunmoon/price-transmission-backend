@@ -1,10 +1,6 @@
 """0003_add_baselines
 
-baselines 테이블 추가 — feat/be-api-reference 임시 정의.
-
-⚠️  feat/pipeline-phase4-5 착수 시 중복 충돌 주의.
-    subperiod_id FK to subperiods 는 해당 브랜치에서 추가 예정
-    (feature_spec_API-REF_v4 §2, frame_spec_backend_vN §8.6).
+baselines 테이블 추가 (subperiod_id FK는 0007에서 추가).
 
 Revision ID: 0003
 Revises: 0002
@@ -28,11 +24,11 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("commodity_id", sa.String(20), nullable=False),
         sa.Column("segment_id", sa.String(10), nullable=False),
-        # subperiod_id: NULL = 전체 기간 기준선 (D-15). FK to subperiods 는 feat/pipeline-phase4-5에서 추가.
+        # NULL = 전체 기간 기준선; FK to subperiods는 0007에서 추가
         sa.Column("subperiod_id", sa.Integer(), nullable=True),
         sa.Column("normal_transmission_lag", sa.SmallInteger(), nullable=False),
         sa.Column("transmission_elasticity", sa.Numeric(10, 4), nullable=False),
-        sa.Column("warmup_end", sa.Date(), nullable=False),   # estimation_start + 48개월 (D-06)
+        sa.Column("warmup_end", sa.Date(), nullable=False),   # estimation_start + 48개월
         sa.Column("model_type", sa.String(10), nullable=False),
         sa.Column("estimation_start", sa.Date(), nullable=False),
         sa.Column("estimation_end", sa.Date(), nullable=False),

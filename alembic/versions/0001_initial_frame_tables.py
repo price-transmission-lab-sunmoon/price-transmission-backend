@@ -1,10 +1,7 @@
 """0001_initial_frame_tables
 
-Frame 단계 9개 테이블 수동 정의 (frame_spec §8.9, autogenerate 금지).
-포함 테이블: pipeline_runs, data_freshness, commodities, segments,
-            external_events, raw_prices, stat_timeseries,
-            anomaly_results, asymmetry_results
-인덱스·UNIQUE 제약 포함 (db_schema_vN 기준).
+초기 9개 테이블 생성: pipeline_runs, data_freshness, commodities, segments,
+external_events, raw_prices, stat_timeseries, anomaly_results, asymmetry_results.
 
 Revision ID: 0001
 Revises:
@@ -24,7 +21,6 @@ depends_on: str | None = None
 
 
 def upgrade() -> None:
-    # ── pipeline_runs (다른 테이블에서 FK 참조하므로 먼저 생성) ─────────────
     op.create_table(
         "pipeline_runs",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
@@ -40,7 +36,6 @@ def upgrade() -> None:
         sa.UniqueConstraint("run_date", name="uq_pipeline_runs_run_date"),
     )
 
-    # ── data_freshness ────────────────────────────────────────────────────────
     op.create_table(
         "data_freshness",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
@@ -52,7 +47,6 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id", name="pk_data_freshness"),
     )
 
-    # ── commodities ───────────────────────────────────────────────────────────
     op.create_table(
         "commodities",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
@@ -72,7 +66,6 @@ def upgrade() -> None:
         sa.UniqueConstraint("commodity_id", name="uq_commodities_commodity_id"),
     )
 
-    # ── segments ──────────────────────────────────────────────────────────────
     op.create_table(
         "segments",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
@@ -91,7 +84,6 @@ def upgrade() -> None:
         sa.UniqueConstraint("segment_id", name="uq_segments_segment_id"),
     )
 
-    # ── external_events ───────────────────────────────────────────────────────
     op.create_table(
         "external_events",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
@@ -105,7 +97,6 @@ def upgrade() -> None:
         sa.UniqueConstraint("event_key", name="uq_external_events_event_key"),
     )
 
-    # ── raw_prices ────────────────────────────────────────────────────────────
     op.create_table(
         "raw_prices",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
@@ -130,7 +121,6 @@ def upgrade() -> None:
     )
     op.create_index("idx_raw_prices_commodity_period", "raw_prices", ["commodity_id", "period"])
 
-    # ── stat_timeseries ───────────────────────────────────────────────────────
     op.create_table(
         "stat_timeseries",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
@@ -167,14 +157,13 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id", name="pk_stat_timeseries"),
         sa.UniqueConstraint("commodity_id", "segment_id", "period", name="uq_stat_ts_commodity_segment_period"),
     )
-    # db_schema_vN: period DESC 최신 데이터 조회 최적화
+    # period DESC로 최신 데이터 조회 최적화
     op.create_index(
         "idx_stat_ts_commodity_segment_period",
         "stat_timeseries",
         ["commodity_id", "segment_id", sa.text("period DESC")],
     )
 
-    # ── anomaly_results ───────────────────────────────────────────────────────
     op.create_table(
         "anomaly_results",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
@@ -214,7 +203,6 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id", name="pk_anomaly_results"),
         sa.UniqueConstraint("commodity_id", "segment_id", "period", name="uq_anomaly_commodity_segment_period"),
     )
-    # db_schema_vN §anomaly_results 인덱스 3종
     op.create_index(
         "idx_anomaly_commodity_period",
         "anomaly_results",
@@ -232,7 +220,6 @@ def upgrade() -> None:
         postgresql_where=sa.text("is_new = TRUE"),
     )
 
-    # ── asymmetry_results ─────────────────────────────────────────────────────
     op.create_table(
         "asymmetry_results",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),

@@ -1,5 +1,4 @@
-"""/meta/config, /meta/pipeline, /meta/analysis-params, /segments, /events, /freshness,
-/admin/batch/trigger 엔드포인트 (api_spec_vN §방법론·설정 엔드포인트, feature_spec_BE-BATCH_v2 §3.2)."""
+"""/meta, /segments, /events, /freshness, /admin/batch/trigger 엔드포인트."""
 import asyncio
 import hashlib
 
@@ -27,11 +26,7 @@ _CACHE_CONTROL = "public, max-age=86400"
 
 
 def _check_etag(request: Request, etag: str) -> Response | None:
-    """If-None-Match 헤더를 비교하여 일치 시 304 Response를 반환한다.
-
-    feature_spec_BE-REDIS_v2 §1.2 ETag 경로 구현.
-    일치하지 않으면 None을 반환하여 정상 응답 흐름으로 진행한다.
-    """
+    """If-None-Match 헤더 비교. 일치 시 304, 불일치 시 None 반환."""
     client_etag = request.headers.get("if-none-match", "")
     quoted = f'"{etag}"'
     if client_etag and (client_etag == quoted or client_etag == etag):
@@ -48,7 +43,7 @@ def _body_etag(body: dict) -> str:
 
 @router.get("/meta/config", response_model=MetaConfigResponse)
 async def get_meta_config() -> MetaConfigResponse:
-    """헬스체크 엔드포인트 — §8.2 frame 단계 신설."""
+    """서버 상태 헬스체크. DB/Redis 연결 여부 포함."""
     from app.db.session import engine
     db_status: str
     try:
@@ -72,7 +67,7 @@ async def get_meta_config() -> MetaConfigResponse:
 async def get_freshness(
     db: AsyncSession = Depends(get_db),
 ) -> JSONResponse:
-    """데이터 기준 시점 — data_freshness 테이블 실 DB 조회."""
+    """데이터 기준 시점. data_freshness 테이블 실 DB 조회."""
     response = await ref_svc.get_freshness(db)
     return JSONResponse(content=response.model_dump())
 
@@ -82,13 +77,9 @@ async def get_events(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> JSONResponse | Response:
-    """외부 충격 이벤트 목록 — ETag + Cache-Control + If-None-Match 304 처리.
-
-    feature_spec_BE-REDIS_v2 §1.2 ETag 경로: If-None-Match 일치 시 304 반환.
-    """
+    """외부 충격 이벤트 목록. ETag, Cache-Control, If-None-Match 304 처리."""
     response, etag = await ref_svc.get_events(db)
 
-    # If-None-Match 비교 — 304 조건부 응답
     not_modified = _check_etag(request, etag)
     if not_modified is not None:
         return not_modified
@@ -104,10 +95,7 @@ async def get_segments(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> JSONResponse | Response:
-    """분석 구간 정의 목록 — ETag + Cache-Control + If-None-Match 304 처리.
-
-    feature_spec_BE-REDIS_v2 §1.2 ETag 경로: If-None-Match 일치 시 304 반환.
-    """
+    """분析 구간 정의 목록. ETag, Cache-Control, If-None-Match 304 처리."""
     response, etag = await ref_svc.get_segments(db)
 
     not_modified = _check_etag(request, etag)
@@ -122,10 +110,7 @@ async def get_segments(
 
 @router.get("/meta/pipeline", response_model=MetaPipelineResponse)
 async def get_meta_pipeline(request: Request) -> MetaPipelineResponse | Response:
-    """파이프라인 플로우 — 정적 데이터 + ETag + If-None-Match 304 처리.
-
-    feature_spec_BE-REDIS_v2 §3.3: 코드 내 정적 딕셔너리 기반 ETag, 304 응답.
-    """
+    """파이프라인 플로우. 정적 데이터, ETag, If-None-Match 304 처리."""
     body = MetaPipelineResponse(
         version=settings.pipeline_spec_version,
         nodes=[
@@ -173,18 +158,13 @@ async def get_meta_pipeline(request: Request) -> MetaPipelineResponse | Response
 
 @router.post("/admin/batch/trigger", status_code=202, response_model=BatchTriggerResponse)
 async def trigger_batch() -> BatchTriggerResponse:
-    """개발용 수동 배치 트리거 — 비동기 실행 후 즉시 202 반환 (feature_spec_BE-BATCH_v2 §3.2).
-
-    - pipeline_runs 초기 레코드 생성 후 run_id 즉시 반환
-    - Phase 실행은 백그라운드 asyncio task로 진행 (API-BATCH-001 방침 준수)
-    - 동일 run_date에 실행 중인 배치 존재 시 202 + 기존 run_id 반환 (API-BATCH-002)
-    """
+    """개발용 수동 배치 트리거. 비동기 실행 후 즉시 202 반환."""
     from app.services.batch import _execute_phases, start_batch
 
     resp = await start_batch()
 
     if not resp.get("skipped"):
-        # Phase 실행을 비동기 백그라운드 태스크로 분리 → 즉시 202 반환
+        # Phase 실행을 백그라운드 태스크로 분리
         from datetime import date
 
         from app.services.batch import _calc_dates
@@ -205,7 +185,7 @@ async def trigger_batch() -> BatchTriggerResponse:
 
 @router.get("/meta/analysis-params", response_model=MetaAnalysisParamsResponse)
 async def get_meta_analysis_params(request: Request) -> MetaAnalysisParamsResponse | Response:
-    """파이프라인 파라미터 기준값 — 정적 데이터 + ETag + If-None-Match 304 처리."""
+    """파이프라인 파라미터 기준값. 정적 데이터, ETag, If-None-Match 304 처리."""
     body = MetaAnalysisParamsResponse(
         version=settings.pipeline_spec_version,
         params={

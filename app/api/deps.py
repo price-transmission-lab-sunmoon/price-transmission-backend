@@ -1,4 +1,4 @@
-"""의존성 주입 — DB 세션 및 Redis 클라이언트."""
+"""의존성 주입. DB 세션 및 Redis 클라이언트."""
 from collections.abc import AsyncGenerator
 
 import redis.asyncio as aioredis

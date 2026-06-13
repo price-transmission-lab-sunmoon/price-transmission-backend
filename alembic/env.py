@@ -1,4 +1,4 @@
-"""Alembic env.py — SQLAlchemy 2.0 비동기(asyncpg) 환경 (frame_spec §8.9)."""
+"""Alembic env.py: SQLAlchemy 2.0 비동기(asyncpg) 환경."""
 from __future__ import annotations
 
 import asyncio
@@ -13,8 +13,6 @@ import app.db.models.batch  # noqa: F401
 import app.db.models.commodity  # noqa: F401
 import app.db.models.timeseries  # noqa: F401
 from alembic import context
-
-# ORM metadata 등록 — 9개 테이블 모두 import하여 Base.metadata에 반영
 from app.core.config import get_settings
 from app.db.base import Base
 

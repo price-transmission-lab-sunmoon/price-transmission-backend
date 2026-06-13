@@ -1,32 +1,7 @@
-"""
-ML 평가 통합 실행 (run_all_evaluation.py)
-==========================================
-역할:
-  축 1~5를 순차 실행하고, 종합 리포트를 CSV로 저장한다.
-  실행마다 타임스탬프 디렉토리를 생성하여 이전 결과를 보존한다.
+"""5축 ML 신뢰성 평가 통합 실행. 타임스탬프 디렉토리에 축별 CSV와 메타 JSON을 저장한다.
 
 입력: Phase 7-ML 출력 + Phase 7 stat 출력 + product_config
-출력: tests/phase7_ml/results/run_{timestamp}/ 아래 축별 CSV + 메타 JSON + 종합 리포트
-
-위치: tests/phase7_ml/run_all_evaluation.py
-
-실행 방법:
-  python tests/phase7_ml/run_all_evaluation.py
-  python tests/phase7_ml/run_all_evaluation.py --memo "피처 추가 실험 v2"
-
-디렉토리 구조:
-  tests/phase7_ml/results/
-  ├── run_20260513_143022/
-  │   ├── run_meta.json          ← 파라미터, 실행 시각, 메모, 요약 지표
-  │   ├── axis1_esr.csv
-  │   ├── axis2_separation.csv
-  │   ├── axis3_auc.csv
-  │   ├── axis3_roc_curves.json  ← ROC curve FPR/TPR 데이터 (대시보드용)
-  │   ├── axis4_sensitivity.csv
-  │   └── axis5_consensus.csv
-  ├── run_20260513_160415/
-  │   └── ...
-  └── latest/                    ← 최신 결과 복사본
+출력: tests/phase7_ml/results/run_{timestamp}/ 아래 축별 CSV + run_meta.json + latest/ 복사본
 """
 
 import sys
@@ -48,18 +23,11 @@ from test_axis4_sensitivity import run_axis4
 from test_axis5_consensus import run_axis5
 
 
-# ---------------------------------------------------------------------------
-# ML 파라미터 수집 (run_meta.json에 기록)
-# ---------------------------------------------------------------------------
 def collect_ml_parameters(ml_dir):
-    """
-    Phase 7-ML 실행 로그에서 파라미터를 읽어온다.
-    로그가 없으면 기본값을 반환한다.
-    """
+    """Phase 7-ML run_log에서 파라미터를 읽어온다. 로그 없으면 기본값 반환."""
     ml_dir = Path(ml_dir)
     models_dir = ml_dir / "models"
 
-    # 최신 run_log 찾기
     log_files = sorted(models_dir.glob("run_log_*.json"), reverse=True) if models_dir.exists() else []
 
     if log_files:
@@ -67,7 +35,6 @@ def collect_ml_parameters(ml_dir):
             run_log = json.load(f)
         return run_log.get("parameters", {}), log_files[0].name
     else:
-        # 기본값 반환
         return {
             "isolation_forest": {"n_estimators": 100, "contamination": 0.10, "random_state": 42},
             "lof": {"n_neighbors": 10, "contamination": 0.10, "novelty": False},
@@ -80,7 +47,6 @@ def collect_ml_parameters(ml_dir):
 
 
 def collect_feature_list(ml_dir):
-    """features CSV에서 실제 사용된 피처 목록을 읽어온다."""
     ml_dir = Path(ml_dir)
     features_dir = ml_dir / "features"
     if not features_dir.exists():
@@ -91,31 +57,24 @@ def collect_feature_list(ml_dir):
         return []
 
     df = pd.read_csv(feature_files[0], nrows=1, encoding="utf-8-sig")
-    # date, commodity_id, segment 제외
     skip_cols = {"date", "commodity_id", "segment"}
     return [c for c in df.columns if c not in skip_cols]
 
 
-# ---------------------------------------------------------------------------
-# 메인 실행
-# ---------------------------------------------------------------------------
 def run_all(data_dir, ml_dir, phase7_dir, results_base, memo=""):
     """5축 평가를 순차 실행하고 타임스탬프 디렉토리에 결과를 저장한다."""
-
-    # --- 타임스탬프 디렉토리 생성 ---
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_id = f"run_{timestamp}"
     output = Path(results_base) / run_id
     output.mkdir(parents=True, exist_ok=True)
 
     log_eval("=" * 60)
-    log_eval(f"ML 신뢰성 평가 시작 (5축) — {run_id}")
+    log_eval(f"ML 신뢰성 평가 시작 (5축): {run_id}")
     if memo:
         log_eval(f"메모: {memo}")
     log_eval("=" * 60)
     print()
 
-    # --- 축 1: ESR ---
     esr_results, esr_weighted = run_axis1(data_dir, ml_dir)
     esr_df = pd.DataFrame([
         {k: v for k, v in r.items() if k != "shock_details"}
@@ -124,15 +83,13 @@ def run_all(data_dir, ml_dir, phase7_dir, results_base, memo=""):
     esr_df.to_csv(output / "axis1_esr.csv", index=False, encoding="utf-8-sig")
     print()
 
-    # --- 축 2: 분리도 ---
     sep_results = run_axis2(data_dir, ml_dir)
     sep_df = pd.DataFrame(sep_results)
     sep_df.to_csv(output / "axis2_separation.csv", index=False, encoding="utf-8-sig")
     print()
 
-    # --- 축 3: AUC + ROC curves ---
     auc_results = run_axis3(data_dir, ml_dir)
-    # roc_curves를 별도 추출 후 제거 (CSV에는 스칼라만 저장)
+    # roc_curves는 별도 JSON에 저장, CSV에는 스칼라만
     roc_curves_all = {}
     auc_results_clean = []
     for r in auc_results:
@@ -142,12 +99,10 @@ def run_all(data_dir, ml_dir, phase7_dir, results_base, memo=""):
         auc_results_clean.append(r)
     auc_df = pd.DataFrame(auc_results_clean)
     auc_df.to_csv(output / "axis3_auc.csv", index=False, encoding="utf-8-sig")
-    # ROC curve 데이터 JSON 저장 (대시보드용)
     with open(output / "axis3_roc_curves.json", "w", encoding="utf-8") as f:
         json.dump(roc_curves_all, f)
     print()
 
-    # --- 축 4: 민감도 ---
     sens_results = run_axis4(data_dir, phase7_dir)
     sens_summary = []
     for r in sens_results:
@@ -181,13 +136,11 @@ def run_all(data_dir, ml_dir, phase7_dir, results_base, memo=""):
     sens_df.to_csv(output / "axis4_sensitivity.csv", index=False, encoding="utf-8-sig")
     print()
 
-    # --- 축 5: CTA + ASC ---
     cons_results = run_axis5(data_dir, ml_dir)
     cons_df = pd.DataFrame(cons_results)
     cons_df.to_csv(output / "axis5_consensus.csv", index=False, encoding="utf-8-sig")
     print()
 
-    # --- 요약 지표 산출 ---
     total_shocks = sum(r["n_shocks"] for r in esr_results)
     if total_shocks > 0:
         weighted_esr = sum(
@@ -206,7 +159,6 @@ def run_all(data_dir, ml_dir, phase7_dir, results_base, memo=""):
     avg_cta = cons_df["cta"].mean()
     avg_asc = cons_df["asc"].dropna().mean()
 
-    # P_stat, P_ml 평균 (컬럼이 있을 때만)
     avg_p_stat = cons_df["p_stat"].dropna().mean() if "p_stat" in cons_df.columns else np.nan
     avg_p_ml = cons_df["p_ml"].dropna().mean() if "p_ml" in cons_df.columns else np.nan
 
@@ -229,7 +181,6 @@ def run_all(data_dir, ml_dir, phase7_dir, results_base, memo=""):
         "hypothesis_holds": f"{n_holds}/{n_valid}",
     }
 
-    # --- run_meta.json 저장 ---
     ml_params, log_source = collect_ml_parameters(ml_dir)
     feature_list = collect_feature_list(ml_dir)
 
@@ -258,13 +209,11 @@ def run_all(data_dir, ml_dir, phase7_dir, results_base, memo=""):
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(run_meta, f, indent=2, ensure_ascii=False)
 
-    # --- latest/ 디렉토리 갱신 ---
     latest_dir = Path(results_base) / "latest"
     if latest_dir.exists():
         shutil.rmtree(latest_dir)
     shutil.copytree(output, latest_dir)
 
-    # --- 종합 리포트 출력 ---
     log_eval("=" * 60)
     log_eval("종합 리포트")
     log_eval("=" * 60)

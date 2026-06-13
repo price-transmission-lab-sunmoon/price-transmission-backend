@@ -1,6 +1,4 @@
-"""/commodities, /commodities/{id}, /stream, /stream/minimap,
-/scatter, /raw-prices, /raw-prices/minimap 엔드포인트 (api_spec_vN §참조·시각화 엔드포인트).
-"""
+"""/commodities 엔드포인트. 목록, 상세, stream, scatter, raw-prices."""
 from __future__ import annotations
 
 from datetime import date
@@ -31,7 +29,7 @@ router = APIRouter()
 
 
 def _analysis_dates(commodity: CommodityDetail, commodity_id: str) -> tuple[date, date]:
-    """CommodityDetail YYYY-MM 문자열 → date 변환. None이면 API-COM-002."""
+    """CommodityDetail YYYY-MM 문자열을 date로 변환. None이면 API-COM-002."""
     if not commodity.analysis_start or not commodity.analysis_end:
         raise APIError(
             "API-COM-002",
@@ -45,13 +43,11 @@ def _analysis_dates(commodity: CommodityDetail, commodity_id: str) -> tuple[date
     return date(y1, m1, 1), date(y2, m2, 1)
 
 
-# ── 참조 엔드포인트 ────────────────────────────────────────────────────────────
-
 @router.get("/commodities", response_model=CommodityListResponse)
 async def list_commodities(
     db: AsyncSession = Depends(get_db),
 ) -> CommodityListResponse:
-    """품목 목록 — commodities 테이블 실 DB 조회 (feature_spec_API-REF_v4 §1.2)."""
+    """품목 목록 조회."""
     return await ref_svc.get_commodities(db)
 
 
@@ -60,11 +56,9 @@ async def get_commodity(
     commodity_id: str,
     db: AsyncSession = Depends(get_db),
 ) -> CommodityDetail:
-    """단일 품목 상세 + segment_meta — baselines/cointegration_results 실 DB 조회."""
+    """단일 품목 상세 및 segment_meta. baselines/cointegration_results 실 DB 조회."""
     return await ref_svc.get_commodity_detail(db, commodity_id)
 
-
-# ── 시각화 엔드포인트 ─────────────────────────────────────────────────────────
 
 @router.get("/commodities/{commodity_id}/stream", response_model=StreamResponse)
 async def get_stream(
@@ -78,8 +72,7 @@ async def get_stream(
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ) -> StreamResponse:
-    """스트림 그래프 시계열 + 이상 노드 — Redis TTL 캐싱 적용 (feature_spec_BE-REDIS_v2 §3.3)."""
-    # 캐시 키: segments/grade/patterns는 §3.3 segment_id 구분자에 대응
+    """스트림 그래프 시계열 및 이상 노드. Redis TTL 캐싱 적용."""
     seg_key = segments or "all"
     cache_key = (
         f"{settings.redis_cache_prefix}:stream:"
@@ -113,7 +106,7 @@ async def get_stream_minimap(
     segments: Annotated[str | None, Query(description="구간 필터 (콤마 구분)")] = None,
     db: AsyncSession = Depends(get_db),
 ) -> StreamMinimapResponse:
-    """스트림 미니맵 — 전체 기간 yearly 고정 + 연도별 이상 밀도."""
+    """스트림 미니맵. 전체 기간 yearly 고정, 연도별 이상 밀도 포함."""
     commodity = await ref_svc.get_commodity_detail(db, commodity_id)
     analysis_start, analysis_end = _analysis_dates(commodity, commodity_id)
     return await stream_svc.get_stream_minimap(
@@ -136,7 +129,7 @@ async def get_scatter(
     grade: Annotated[str, Query(description="신뢰도 등급 필터 (콤마 구분)")] = "high,medium",
     db: AsyncSession = Depends(get_db),
 ) -> ScatterResponse:
-    """전달 구조 산점도 — stat_timeseries + baselines 실 DB 조회."""
+    """전달 구조 산점도. stat_timeseries, baselines 실 DB 조회."""
     commodity = await ref_svc.get_commodity_detail(db, commodity_id)
     analysis_start, analysis_end = _analysis_dates(commodity, commodity_id)
     return await scatter_svc.get_scatter(
@@ -163,8 +156,7 @@ async def get_raw_prices(
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ) -> RawPricesResponse:
-    """원시 시계열 레이아웃 1~6 — Redis TTL 캐싱 적용 (feature_spec_BE-REDIS_v2 §3.3)."""
-    # 캐시 키: raw-prices:{cid}:all:{from}:{to}:{granularity}:{layout}
+    """원시 시계열 레이아웃 1~6. Redis TTL 캐싱 적용."""
     cache_key = (
         f"{settings.redis_cache_prefix}:raw-prices:"
         f"{commodity_id}:all:{from_ or 'default'}:{to or 'default'}:{granularity}:{layout}"
@@ -195,7 +187,7 @@ async def get_raw_prices_minimap(
     layout: Annotated[int, Query(ge=1, le=6, description="레이아웃 번호 1~6")] = 1,
     db: AsyncSession = Depends(get_db),
 ) -> RawPricesMinimapResponse:
-    """원시 시계열 미니맵 — 전체 기간 yearly + anomaly_density."""
+    """원시 시계열 미니맵. 전체 기간 yearly, anomaly_density 포함."""
     commodity = await ref_svc.get_commodity_detail(db, commodity_id)
     analysis_start, analysis_end = _analysis_dates(commodity, commodity_id)
     return await rp_svc.get_raw_prices_minimap(

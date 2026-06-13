@@ -1,9 +1,4 @@
-"""
-Phase 0 전처리 — Step 2: 공통 분석 기간 확정
-==============================================
-10개 품목별로 모든 소스가 겹치는 기간을 산출합니다.
-실행: python src/preprocessing/step2_common_period.py
-"""
+"""Step 2: 품목별 소스 기간 교집합을 구해 공통 분석 기간을 산출한다."""
 
 import json
 import pandas as pd
@@ -16,35 +11,29 @@ PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def load_all_sources():
-    """모든 소스 데이터 로드 + 품목별 기간 추출"""
+    """가용 소스 CSV 로드."""
     sources = {}
 
-    # World Bank (원화 환산)
     wb_path = PROCESSED_DIR / "worldbank_prices_krw.csv"
     if wb_path.exists():
         sources["worldbank"] = pd.read_csv(wb_path, parse_dates=["date"])
 
-    # 관세청
     cu_path = RAW_DIR / "customs" / "customs_import_prices.csv"
     if cu_path.exists():
         sources["customs"] = pd.read_csv(cu_path, parse_dates=["date"])
 
-    # ECOS PPI/CPI
     ecos_path = RAW_DIR / "ecos" / "ecos_ppi_cpi.csv"
     if ecos_path.exists():
         sources["ecos"] = pd.read_csv(ecos_path, parse_dates=["date"])
 
-    # 환율
     exrate_path = RAW_DIR / "exchange_rate" / "exchange_rate_monthly.csv"
     if exrate_path.exists():
         sources["exchange_rate"] = pd.read_csv(exrate_path, parse_dates=["date"])
 
-    # KAMIS 도매가
     kamis_path = RAW_DIR / "kamis" / "kamis_wholesale_monthly.csv"
     if kamis_path.exists():
         sources["kamis"] = pd.read_csv(kamis_path, parse_dates=["date"])
 
-    # FAO
     fao_path = RAW_DIR / "fao" / "fao_ffpi_monthly.csv"
     if fao_path.exists():
         sources["fao"] = pd.read_csv(fao_path, parse_dates=["date"])
@@ -60,7 +49,6 @@ def find_common_period():
     sources = load_all_sources()
     print(f"\n  로드된 소스: {list(sources.keys())}")
 
-    # 매핑 파일 읽기
     mapping_path = PROJECT_ROOT / "config" / "commodity_mapping.json"
     with open(mapping_path, "r", encoding="utf-8") as f:
         mapping = json.load(f)
@@ -79,19 +67,16 @@ def find_common_period():
 
         periods = {}
 
-        # World Bank
         if "worldbank" in sources:
             wb = sources["worldbank"][sources["worldbank"]["commodity_id"] == cid]
             if not wb.empty:
                 periods["WB"] = (wb["date"].min(), wb["date"].max())
 
-        # 관세청
         if "customs" in sources:
             cu = sources["customs"][sources["customs"]["commodity_id"] == cid]
             if not cu.empty:
                 periods["관세청"] = (cu["date"].min(), cu["date"].max())
 
-        # ECOS PPI
         if "ecos" in sources:
             ppi = sources["ecos"][
                 (sources["ecos"]["commodity_id"] == cid) &
@@ -100,7 +85,6 @@ def find_common_period():
             if not ppi.empty:
                 periods["PPI"] = (ppi["date"].min(), ppi["date"].max())
 
-        # ECOS CPI
         if "ecos" in sources:
             cpi = sources["ecos"][
                 (sources["ecos"]["commodity_id"] == cid) &
@@ -109,18 +93,15 @@ def find_common_period():
             if not cpi.empty:
                 periods["CPI"] = (cpi["date"].min(), cpi["date"].max())
 
-        # 환율 (공통)
         if "exchange_rate" in sources:
             ex = sources["exchange_rate"]
             periods["환율"] = (ex["date"].min(), ex["date"].max())
 
-        # KAMIS 도매가 (해당 품목만)
         if has_wholesale and "kamis" in sources:
             kamis = sources["kamis"][sources["kamis"]["commodity_id"] == cid]
             if not kamis.empty:
                 periods["KAMIS"] = (kamis["date"].min(), kamis["date"].max())
 
-        # 공통 기간 산출
         if periods:
             common_start = max(start for start, _ in periods.values())
             common_end = min(end for _, end in periods.values())
@@ -137,16 +118,10 @@ def find_common_period():
             months = 0
             common_str = "❌ 데이터 없음"
 
-        # 소스별 기간 요약
-        period_strs = []
-        for src, (s, e) in periods.items():
-            period_strs.append(f"{src}:{s.strftime('%Y-%m')}~{e.strftime('%Y-%m')}")
-        period_summary = " | ".join(period_strs)
-
         print(f"  {name_kr}({cid})")
         for src, (s, e) in periods.items():
             print(f"    {src:<8} {s.strftime('%Y-%m')}~{e.strftime('%Y-%m')}")
-        print(f"    → 공통: {common_str} ({months}개월)")
+        print(f"    공통 기간: {common_str} ({months}개월)")
         print()
 
         results.append({
@@ -159,7 +134,6 @@ def find_common_period():
             "source_count": len(periods),
         })
 
-    # 전체 공통 기간 (전 품목이 겹치는 기간)
     valid_results = [r for r in results if r["common_months"] > 0]
     if valid_results:
         global_start = max(r["common_start"] for r in valid_results)
@@ -171,7 +145,6 @@ def find_common_period():
         print(f"     {global_start.strftime('%Y-%m')} ~ {global_end.strftime('%Y-%m')} ({global_months}개월)")
         print(f"  {'='*60}")
 
-    # 결과 저장
     result_df = pd.DataFrame(results)
     output_path = PROCESSED_DIR / "common_periods.csv"
     result_df.to_csv(output_path, index=False, encoding="utf-8-sig")

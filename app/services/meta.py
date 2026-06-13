@@ -1,7 +1,6 @@
-"""정적 메타 데이터 응답 생성 + ETag 계산 (feature_spec_API-META_v2).
+"""정적 메타 데이터 응답 생성 + ETag 계산.
 
 DB 세션 의존성 없음. 정적 딕셔너리 + settings.py 파라미터만 사용.
-PM 승인 전 신규 settings.py 키는 _DEFAULTS 딕셔너리로 임시 관리 (§4.2).
 """
 import hashlib
 import json
@@ -16,20 +15,17 @@ from app.schemas.meta import (
     PipelineNode,
 )
 
-# ── PM 승인 전 임시 상수 (feature_spec §4.2) ─────────────────────────────────
-# PM 승인 후 settings.py 키 참조로 교체 예정.
-# 하드코딩 금지 원칙 준수: 응답 생성 코드는 반드시 이 딕셔너리를 참조한다.
+# TODO: settings.py로 이전 검토 (_DEFAULTS 키들을 settings 환경변수로 관리)
 _DEFAULTS: dict = {
-    "pipeline_version": "v8",          # → PIPELINE_VERSION
-    "iqr_multiplier": 1.5,             # → IQR_MULTIPLIER
-    "stability_threshold": 0.03,       # → STABILITY_THRESHOLD
-    "pattern3_n_values": [2, 3, 6],    # → PATTERN3_N_VALUES
-    "min_subperiod_obs": 60,           # → MIN_SUBPERIOD_OBS
-    "lag_search_range": [1, 4],        # → LAG_SEARCH_RANGE
-    "chow_test_points": ["2008-01", "2020-01", "2022-01"],  # → CHOW_TEST_POINTS
+    "pipeline_version": "v8",          # 추후 PIPELINE_VERSION 설정으로 대체
+    "iqr_multiplier": 1.5,             # 추후 IQR_MULTIPLIER 설정으로 대체
+    "stability_threshold": 0.03,       # 추후 STABILITY_THRESHOLD 설정으로 대체
+    "pattern3_n_values": [2, 3, 6],    # 추후 PATTERN3_N_VALUES 설정으로 대체
+    "min_subperiod_obs": 60,           # 추후 MIN_SUBPERIOD_OBS 설정으로 대체
+    "lag_search_range": [1, 4],        # 추후 LAG_SEARCH_RANGE 설정으로 대체
+    "chow_test_points": ["2008-01", "2020-01", "2022-01"],  # 추후 CHOW_TEST_POINTS 설정으로 대체
 }
 
-# ── 정적 노드 (11개, api_spec_v5 §/meta/pipeline) ────────────────────────────
 _PIPELINE_NODES: list[PipelineNode] = [
     PipelineNode(id="phase0",      label="Phase 0",    description="데이터 수집·전처리",  phase_number=0),
     PipelineNode(id="phase1",      label="Phase 1",    description="계절 조정 (STL)",     phase_number=1),
@@ -44,7 +40,6 @@ _PIPELINE_NODES: list[PipelineNode] = [
     PipelineNode(id="phase8",      label="Phase 8",    description="결과 종합·등급화",    phase_number=8),
 ]
 
-# ── 정적 엣지 (12개, api_spec_v5 §/meta/pipeline) ────────────────────────────
 _PIPELINE_EDGES: list[PipelineEdge] = [
     PipelineEdge(source="phase0",      target="phase1"),
     PipelineEdge(source="phase1",      target="phase2"),
@@ -60,8 +55,6 @@ _PIPELINE_EDGES: list[PipelineEdge] = [
     PipelineEdge(source="phase7_ml",   target="phase8"),
 ]
 
-# ── 정적 패턴 (3개, api_spec_v5 §/meta/analysis-params 원본 텍스트) ──────────
-# 텍스트 임의 수정 금지 — PM 승인 필요 (feature_spec §8 금지사항).
 _PATTERNS: list[PatternInfo] = [
     PatternInfo(
         pattern_id="pattern1",
@@ -94,17 +87,13 @@ _PATTERNS: list[PatternInfo] = [
 
 
 def _compute_etag(data: dict) -> str:
-    """응답 본문 SHA-256 해시 앞 16자 반환 (feature_spec §3.4)."""
+    """응답 본문 SHA-256 해시 앞 16자."""
     body = json.dumps(data, ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(body.encode()).hexdigest()[:16]
 
 
 def build_pipeline_response() -> tuple[MetaPipelineResponse, str]:
-    """GET /meta/pipeline 응답 + ETag 반환.
-
-    Returns:
-        (MetaPipelineResponse, etag_hex_16)
-    """
+    """GET /meta/pipeline 응답 + ETag 반환."""
     response = MetaPipelineResponse(
         version=_DEFAULTS["pipeline_version"],
         nodes=_PIPELINE_NODES,
@@ -115,14 +104,7 @@ def build_pipeline_response() -> tuple[MetaPipelineResponse, str]:
 
 
 def build_analysis_params_response() -> tuple[MetaAnalysisParamsResponse, str]:
-    """GET /meta/analysis-params 응답 + ETag 반환.
-
-    settings.py 등록 키(ROLLING_WINDOW, ZSCORE_WARNING, ZSCORE_ALERT)는 직접 참조.
-    PM 승인 전 신규 키는 _DEFAULTS 참조.
-
-    Returns:
-        (MetaAnalysisParamsResponse, etag_hex_16)
-    """
+    """GET /meta/analysis-params 응답 + ETag 반환."""
     response = MetaAnalysisParamsResponse(
         version=_DEFAULTS["pipeline_version"],
         params=AnalysisParams(

@@ -1,8 +1,4 @@
-"""Phase 2 — stationarity_results 적재
-
-feature_spec_DB-PIPELINE_v2 §2 입력 데이터 기준.
-exception_design_v3 §2 에러 체이닝 패턴 준수.
-"""
+"""Phase 2: stationarity_results 적재."""
 from __future__ import annotations
 
 import logging
@@ -23,11 +19,7 @@ async def load_stationarity_results(
     session: AsyncSession,
     run_id: int,
 ) -> int:
-    """Phase 2 stationarity_results.csv → stationarity_results UPSERT.
-
-    UNIQUE KEY: (commodity_id, price_col).
-    Returns upserted row count.
-    """
+    """stationarity_results.csv를 읽어 stationarity_results 테이블에 UPSERT한다."""
     csv_path = Path(settings.pipeline_data_root) / "phase2" / "stationarity_results.csv"
     if not csv_path.exists():
         raise DBError(
@@ -39,7 +31,7 @@ async def load_stationarity_results(
     try:
         df = pd.read_csv(csv_path)
     except pd.errors.EmptyDataError:
-        logger.warning("Phase 2 stationarity_results.csv 비어있음 — 적재 건너뜀", extra={"run_id": run_id})
+        logger.warning("Phase 2 stationarity_results.csv 비어있음, 적재 건너뜀", extra={"run_id": run_id})
         return 0
     except Exception as e:
         raise DBError(
@@ -49,10 +41,10 @@ async def load_stationarity_results(
         ) from e
 
     if df.empty or "integration_order" not in df.columns:
-        logger.warning("Phase 2 stationarity_results.csv 유효 데이터 없음 — 적재 건너뜀", extra={"run_id": run_id})
+        logger.warning("Phase 2 stationarity_results.csv 유효 데이터 없음, 적재 건너뜀", extra={"run_id": run_id})
         return 0
 
-    # i2_flag 는 pipeline_output_spec 표에 없음 — integration_order == 2 로 파생
+    # integration_order == 2 파생
     if "i2_flag" not in df.columns:
         df["i2_flag"] = df["integration_order"] == 2
 
@@ -126,7 +118,7 @@ async def load_stationarity_results(
         await session.rollback()
         raise DBError(
             "DB-TX-001",
-            "Phase 2 트랜잭션 롤백 — stationarity_results 적재 실패",
+            "Phase 2 트랜잭션 롤백: stationarity_results 적재 실패",
             {"run_id": run_id, "error": str(e)},
         ) from e
 

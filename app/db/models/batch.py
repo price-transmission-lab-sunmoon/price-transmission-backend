@@ -1,4 +1,4 @@
-"""ORM 모델 — pipeline_runs, data_freshness (db_schema_vN §배치 관리 테이블)."""
+"""ORM 모델: pipeline_runs, data_freshness."""
 from sqlalchemy import TIMESTAMP, Column, Date, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.sql import func

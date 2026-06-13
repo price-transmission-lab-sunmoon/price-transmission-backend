@@ -1,38 +1,4 @@
-"""
-축 5 -- 합의 기반 지표 (CTA + ASC + P_stat + P_ml)
-====================================================
-역할:
-  통계-ML 트랙의 탐지 합의를 정량화한다.
-  CTA = |통계 교집합 ML| / |통계 합집합 ML|
-  ASC = |합의 시점 중 충격 윈도우 내| / |합의 시점 총|
-
-  정밀도 지표 (신규):
-  P_stat = |통계 탐지 ∩ 충격 윈도우 내| / |통계 탐지 총 시점|
-  P_ml   = |ML 탐지 ∩ 충격 윈도우 내| / |ML 탐지 총 시점|
-
-  핵심 가설: ASC > max(P_stat, P_ml)
-    → 합의 기반 탐지의 정밀도가 단일 트랙 탐지의 정밀도보다 높다
-    → 세 지표 모두 precision 형태로 차원 통일
-
-  보조 지표 (recall 형태, 변경 없음):
-  ESR_stat, ESR_ml — 민감도 기술용으로 함께 보고
-
-변경 이력:
-  v2 (2026-05-14):
-    - P_stat, P_ml 산출 추가
-    - 핵심 가설 ASC > max(ESR_stat, ESR_ml) → ASC > max(P_stat, P_ml) 변경
-    - ESR_stat, ESR_ml은 보조 지표로 유지
-
-입력 파일:
-  - data/processed/phase7_ml/cross_validation/{cid}_{seg}_cross_val.csv
-  - data/processed/phase7_ml/predictions/{cid}_{seg}_ml_predictions.csv
-  - data/processed/phase4/baseline/{cid}_{seg}_baseline.json
-  - data/processed/product_config.json
-
-출력: CTA, ASC, P_stat, P_ml, ESR_stat, ESR_ml 결과 dict
-
-위치: tests/phase7_ml/test_axis5_consensus.py
-"""
+"""축 5: 합의 기반 지표(CTA + ASC + P_stat + P_ml) 산출."""
 
 import sys
 import os
@@ -52,10 +18,7 @@ from eval_common import (
 
 
 def compute_cta(cv_df):
-    """
-    Cross-Track Agreement를 산출한다.
-    CTA = |stat 교집합 ml| / |stat 합집합 ml|
-    """
+    """CTA = |stat ∩ ml| / |stat ∪ ml|"""
     stat = cv_df["stat_detected"].values
     ml = cv_df["ml_detected"].values
 
@@ -68,11 +31,8 @@ def compute_cta(cv_df):
 
 
 def compute_asc(cv_df, shocks):
-    """
-    Agreement-to-Shock Coincidence를 산출한다.
-    ASC = |합의 시점 중 충격 윈도우 내| / |합의 시점 총|
-    """
-    # 합의 시점 = stat + ml 동시 탐지
+    """ASC = 합의 시점 중 충격 윈도우 내 비율."""
+    # stat + ml 동시 탐지 시점
     consensus = cv_df[cv_df["stat_detected"] & cv_df["ml_detected"]]
     n_consensus = len(consensus)
 
@@ -90,15 +50,7 @@ def compute_asc(cv_df, shocks):
 
 
 def compute_p_stat(cv_df, shocks):
-    """
-    통계 트랙의 충격 정밀도를 산출한다.
-    P_stat = |통계 탐지 ∩ 충격 윈도우 내| / |통계 탐지 총 시점|
-
-    "통계가 이상이라고 탐지한 시점 중, 실제 충격 기간과 겹치는 비율"
-
-    Returns:
-        (p_stat float, n_stat_detected int)
-    """
+    """P_stat = 통계 탐지 시점 중 충격 윈도우 내 비율."""
     stat_detected = cv_df[cv_df["stat_detected"] == True]
     n_stat = len(stat_detected)
 
@@ -114,19 +66,7 @@ def compute_p_stat(cv_df, shocks):
 
 
 def compute_p_ml(cv_df, pred_df, shocks):
-    """
-    ML 트랙의 충격 정밀도를 산출한다.
-    P_ml = |ML 탐지 ∩ 충격 윈도우 내| / |ML 탐지 총 시점|
-
-    "ML이 이상이라고 탐지한 시점 중, 실제 충격 기간과 겹치는 비율"
-
-    Note:
-        ml_detected는 predictions CSV 기준으로 산출.
-        cross_val에도 ml_detected가 있지만, predictions가 원본.
-
-    Returns:
-        (p_ml float, n_ml_detected int)
-    """
+    """P_ml = ML 탐지 시점 중 충격 윈도우 내 비율. predictions CSV 기준 산출."""
     ml_detected = pred_df[pred_df["ml_detected"] == True]
     n_ml = len(ml_detected)
 
@@ -142,10 +82,7 @@ def compute_p_ml(cv_df, pred_df, shocks):
 
 
 def compute_esr_stat(cv_df, shocks):
-    """
-    통계 트랙의 ESR을 산출한다 (보조 지표).
-    ESR_stat = (충격 윈도우 내 통계 탐지 1건+ → 회수) / 총 충격 수
-    """
+    """ESR_stat 보조 지표. 충격 윈도우 내 통계 탐지 1건 이상이면 회수로 간주하여 비율을 반환한다."""
     n_shocks = len(shocks)
     if n_shocks == 0:
         return np.nan
@@ -164,10 +101,7 @@ def compute_esr_stat(cv_df, shocks):
 
 
 def compute_esr_ml(pred_df, shocks):
-    """
-    ML 트랙의 ESR을 산출한다 (보조 지표).
-    ESR_ml = (충격 윈도우 내 ML 탐지 1건+ → 회수) / 총 충격 수
-    """
+    """ESR_ml 보조 지표. 충격 윈도우 내 ML 탐지 1건 이상이면 회수로 간주하여 비율을 반환한다."""
     n_shocks = len(shocks)
     if n_shocks == 0:
         return np.nan
@@ -186,7 +120,6 @@ def compute_esr_ml(pred_df, shocks):
 
 
 def run_axis5(data_dir, ml_dir):
-    """전 20개 구간에 대해 CTA, ASC, P_stat, P_ml을 산출한다."""
     segments = get_ml_segments(data_dir)
     log_eval("축 5 (CTA + ASC + P_stat + P_ml) 시작")
 
@@ -198,19 +131,16 @@ def run_axis5(data_dir, ml_dir):
         shocks = get_applicable_shocks(data_dir, cid, seg)
         n_shocks = len(shocks)
 
-        # --- 기존 지표 ---
         cta = compute_cta(cv)
         asc, n_consensus = compute_asc(cv, shocks)
 
-        # --- 신규 정밀도 지표 ---
         p_stat, n_stat_detected = compute_p_stat(cv, shocks)
         p_ml, n_ml_detected = compute_p_ml(cv, pred, shocks)
 
-        # --- 보조 지표 (recall) ---
         esr_stat = compute_esr_stat(cv, shocks)
         esr_ml = compute_esr_ml(pred, shocks)
 
-        # --- 핵심 가설 검증: ASC > max(P_stat, P_ml) ---
+        # 핵심 가설: ASC > max(P_stat, P_ml)
         if (not np.isnan(asc) and not np.isnan(p_stat) and not np.isnan(p_ml)):
             hypothesis_holds = asc > max(p_stat, p_ml)
         else:

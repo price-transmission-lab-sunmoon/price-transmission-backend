@@ -1,4 +1,4 @@
-"""APScheduler 월별 자동 배치 + 파이프라인 결과 DB 적재 (feature_spec_BE-BATCH_v2)."""
+"""APScheduler 월별 자동 배치 + 파이프라인 결과 DB 적재."""
 from __future__ import annotations
 
 import asyncio
@@ -22,16 +22,11 @@ from app.db.session import AsyncSessionLocal
 
 logger = logging.getLogger("app")
 
-# Phase 실행 순서 (feature_spec_BE-BATCH_v2 §1.2)
 PHASES: list[str] = ["0", "1", "2", "3", "4", "5", "6", "7", "7-ml"]
 
 
 def _call_pipeline(fn, *args, **kwargs):
-    """파이프라인 함수 호출 시 stdout을 캡처해 인코딩 오류를 방지한다.
-
-    pipeline 스크립트의 print()는 서버 컨텍스트에서 불필요하므로 StringIO로 흡수한다.
-    실패 시 예외를 그대로 재발생시킨다.
-    """
+    """파이프라인 함수 호출. stdout을 StringIO로 흡수해 인코딩 오류 방지."""
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         result = fn(*args, **kwargs)
@@ -44,16 +39,8 @@ def _call_pipeline(fn, *args, **kwargs):
     return result
 
 
-# ── Phase 실행 ────────────────────────────────────────────────────────────────
-
 async def _run_phase(phase: str, run_id: int) -> None:
-    """Phase 실행 — 파이프라인 계산 + DB 적재.
-
-    Phase 0~1: 데이터 수집·전처리 (pipeline.preprocessing)
-    Phase 2~6: 계량경제 분석 계산 후 DB 적재 (app.db.loader)
-    Phase 7:    pattern1/2/3 + integrate → stat_timeseries + anomaly_results 적재
-    Phase 7-ml: phase7_ml_run → ml_scores 적재 (percentile 산출 포함)
-    """
+    """Phase 실행. 파이프라인 계산 후 DB 적재."""
     root = Path(settings.pipeline_data_root)
 
     logger.info(
@@ -185,12 +172,10 @@ async def _run_phase(phase: str, run_id: int) -> None:
 
     else:
         logger.warning(
-            f"알 수 없는 Phase {phase} — skip",
+            f"알 수 없는 Phase {phase}. skip",
             extra={"error_code": "BATCH", "context": {"phase": phase, "run_id": run_id}},
         )
 
-
-# ── 배치 초기화 — run_id 확보 ─────────────────────────────────────────────────
 
 async def _prepare_run(
     run_date: date,
@@ -198,15 +183,8 @@ async def _prepare_run(
     next_run_date: date,
     started_at: datetime,
 ) -> tuple[int, dict]:
-    """중복 체크 후 pipeline_runs UPSERT, run_id 반환.
-
-    Returns:
-        (run_id, initial_response_dict)
-        - API-BATCH-002: 동일 run_date에 status='running' 존재 시 기존 run_id 반환 + 로그
-        - DB-RUN-001: UPSERT가 아닌 충돌 시 FATAL (현재 구조에선 on_conflict_do_update로 방지)
-    """
+    """중복 체크 후 pipeline_runs UPSERT. (run_id, 초기 응답 dict) 반환."""
     async with AsyncSessionLocal() as db:
-        # API-BATCH-002: 동일 run_date 실행 중인 배치 확인
         result = await db.execute(
             select(PipelineRun).where(
                 PipelineRun.run_date == run_date,
@@ -216,7 +194,7 @@ async def _prepare_run(
         existing = result.scalar_one_or_none()
         if existing is not None:
             logger.warning(
-                "배치 중복 실행 감지 — 실행 skip (API-BATCH-002)",
+                "배치 중복 실행 감지. 실행 skip (API-BATCH-002)",
                 extra={
                     "error_code": "API-BATCH-002",
                     "context": {
@@ -238,7 +216,6 @@ async def _prepare_run(
             }
             return existing.id, resp
 
-        # pipeline_runs UPSERT — status='running' 초기 기록 (db_schema_vN §D-17)
         stmt = (
             pg_insert(PipelineRun)
             .values(
@@ -277,18 +254,13 @@ async def _prepare_run(
     return run_id, resp
 
 
-# ── Phase 순차 실행 + 최종 DB 기록 ────────────────────────────────────────────
-
 async def _execute_phases(
     run_id: int,
     run_date: date,
     data_up_to: date,
     next_run_date: date,
 ) -> None:
-    """Phase 0~7-ML 순차 호출 및 최종 status·data_freshness 갱신.
-
-    API-BATCH-001: 임의 예외 발생 시 WARN 로그 + status='failed' 기록. 서버 유지.
-    """
+    """Phase 0~7-ML 순차 호출 및 최종 status, data_freshness 갱신."""
     phases_run: list[str] = []
     error_message: Optional[str] = None
     status = "completed"
@@ -299,7 +271,6 @@ async def _execute_phases(
                 await _run_phase(phase, run_id)
                 phases_run.append(phase)
 
-                # Phase 완료마다 phases_run 중간 갱신 (§3.1 트랜잭션 단위)
                 async with AsyncSessionLocal() as db:
                     await db.execute(
                         text(
@@ -326,9 +297,8 @@ async def _execute_phases(
         status = "failed"
         if error_message is None:
             error_message = str(exc)
-        # API-BATCH-001: WARN. 서버 유지. 다음 배치까지 대기.
         logger.error(
-            "APScheduler 월별 배치 예외 — pipeline_runs.status='failed' 기록 (API-BATCH-001)",
+            "APScheduler 월별 배치 예외. pipeline_runs.status='failed' 기록 (API-BATCH-001)",
             extra={
                 "error_code": "API-BATCH-001",
                 "context": {
@@ -339,7 +309,6 @@ async def _execute_phases(
             },
         )
 
-    # 최종 상태 업데이트 — 예외 발생 시에도 반드시 기록 (API-BATCH-001 방침)
     finished_at = datetime.now(timezone.utc)
     async with AsyncSessionLocal() as db:
         await db.execute(
@@ -362,7 +331,6 @@ async def _execute_phases(
             },
         )
 
-        # data_freshness 갱신 — status='completed' 시에만, 단독 트랜잭션 (§3.1)
         if status == "completed":
             upd = await db.execute(
                 text(
@@ -394,27 +362,23 @@ async def _execute_phases(
 
         await db.commit()
 
-    # 배치 완료 시 시계열 캐시 전체 무효화 (feature_spec_BE-REDIS_v2 §1.2)
     if status == "completed":
         await invalidate_cache(run_id)
 
     logger.info(
-        f"배치 {status} 완료 — run_id={run_id}, run_date={run_date}",
+        f"배치 {status} 완료. run_id={run_id}, run_date={run_date}",
         extra={"error_code": "BATCH", "context": {"run_id": run_id, "status": status}},
     )
 
 
-# ── 공개 진입점 ───────────────────────────────────────────────────────────────
-
 def _calc_dates(run_date: date) -> tuple[date, date]:
-    """배치 실행일로부터 data_up_to, next_run_date 계산."""
-    # data_up_to: 전월 1일 (db_schema_vN §설계원칙 6, DB-TYPE-001 방지)
+    """배치 실행일에서 data_up_to, next_run_date 계산."""
+    # data_up_to: 전월 1일
     if run_date.month == 1:
         data_up_to = date(run_date.year - 1, 12, 1)
     else:
         data_up_to = date(run_date.year, run_date.month - 1, 1)
 
-    # next_run_date: 다음달 batch_schedule_day일
     next_month = run_date.month % 12 + 1
     next_year = run_date.year + (1 if run_date.month == 12 else 0)
     next_run_date = date(next_year, next_month, settings.batch_schedule_day)
@@ -425,8 +389,7 @@ def _calc_dates(run_date: date) -> tuple[date, date]:
 async def start_batch(run_date: Optional[date] = None) -> dict:
     """pipeline_runs 초기 레코드 생성 후 run_id 반환 (트리거 엔드포인트용).
 
-    반환 dict에 'skipped': True 포함 시 API-BATCH-002 발동 (이미 실행 중).
-    Phase 실행은 caller가 asyncio.create_task(_execute_phases(...))로 처리.
+    # TODO: misfire 발생 시 직전 run_date 자동 보정 로직 추가 검토
     """
     if run_date is None:
         run_date = date.today()
@@ -437,10 +400,7 @@ async def start_batch(run_date: Optional[date] = None) -> dict:
 
 
 async def run_monthly_pipeline(run_date: Optional[date] = None) -> None:
-    """APScheduler cron 잡 진입점 — 초기화 + Phase 실행 일괄 처리.
-
-    배치 실패 시 서버 프로세스를 종료하지 않는다 (API-BATCH-001 방침).
-    """
+    """APScheduler cron 잡 진입점. 초기화 후 Phase 실행 일괄 처리."""
     if run_date is None:
         run_date = date.today()
     started_at = datetime.now(timezone.utc)
@@ -448,19 +408,13 @@ async def run_monthly_pipeline(run_date: Optional[date] = None) -> None:
 
     run_id, resp = await _prepare_run(run_date, data_up_to, next_run_date, started_at)
     if resp.get("skipped"):
-        return  # API-BATCH-002: 이미 실행 중 → skip
+        return
 
     await _execute_phases(run_id, run_date, data_up_to, next_run_date)
 
 
-# ── APScheduler 인스턴스 팩토리 ───────────────────────────────────────────────
-
 async def invalidate_cache(pipeline_run_id: int) -> None:
-    """배치 완료 후 시계열 캐시 패턴 전체 삭제 (feature_spec_BE-REDIS_v2 §1.2).
-
-    pipeline_runs.status='completed' 이후 호출된다.
-    캐시 삭제 실패 시 DB-CACHE-001 WARN — 서비스 중단 없음.
-    """
+    """배치 완료 후 시계열 캐시 패턴 전체 삭제."""
     prefix = settings.redis_cache_prefix
     client = get_redis_client()
     patterns = [
@@ -471,7 +425,7 @@ async def invalidate_cache(pipeline_run_id: int) -> None:
     for pattern in patterns:
         count = await cache_delete_pattern(client, pattern)
         logger.info(
-            f"캐시 무효화 완료 — pattern={pattern}, deleted={count}, run_id={pipeline_run_id}",
+            f"캐시 무효화 완료. pattern={pattern}, deleted={count}, run_id={pipeline_run_id}",
             extra={
                 "error_code": "BATCH",
                 "context": {
@@ -484,10 +438,7 @@ async def invalidate_cache(pipeline_run_id: int) -> None:
 
 
 def init_scheduler() -> AsyncIOScheduler:
-    """APScheduler 인스턴스 생성 + 월별 cron 스케줄 등록.
-
-    §4 파라미터 전체를 settings에서 참조 — 하드코딩 금지 (feature_spec_BE-BATCH_v2 §8).
-    """
+    """APScheduler 인스턴스 생성 + 월별 cron 스케줄 등록."""
     sched = AsyncIOScheduler()
     sched.add_job(
         run_monthly_pipeline,

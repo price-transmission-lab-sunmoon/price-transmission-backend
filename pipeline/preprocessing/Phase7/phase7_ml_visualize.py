@@ -1,31 +1,8 @@
 """
-Phase 7-ML 결과 시각화 (phase7_ml_visualize.py)
-================================================
-역할:
-  Phase 7-ML 결과를 6개 차트로 시각화한다.
-  1. 신뢰도 등급 분포 (전체)
-  2. 품목별 신뢰도 등급 (가로 누적 막대)
-  3. 3종 모델 탐지 벤 다이어그램 (합의 수 분포)
-  4. 통계-ML 교차 대조 히트맵
-  5. 개별 품목x구간 타임라인 (선택 가능)
-  6. 모델별 이상 점수 분포 (박스플롯)
+Phase 7-ML 결과 시각화. 신뢰도 등급, 교차 대조, 타임라인, 박스플롯 등 6종 차트를 생성한다.
 
-입력 파일:
-  - data/processed/phase7_ml/phase7_ml_summary.csv
-  - data/processed/phase7_ml/predictions/{cid}_{seg}_ml_predictions.csv
-  - data/processed/phase7_ml/cross_validation/{cid}_{seg}_cross_val.csv
-  - data/processed/phase7_ml/confidence_grades/{cid}_{seg}_grades.csv
-
-출력 파일:
-  - data/processed/phase7_ml/figures/01_grade_distribution.png
-  - data/processed/phase7_ml/figures/02_grade_by_commodity.png
-  - data/processed/phase7_ml/figures/03_consensus_distribution.png
-  - data/processed/phase7_ml/figures/04_cross_validation_heatmap.png
-  - data/processed/phase7_ml/figures/05_timeline_{cid}_{seg}.png
-  - data/processed/phase7_ml/figures/06_score_boxplot.png
-
-실행 방법:
-  python src/preprocessing/Phase7/phase7_ml_visualize.py
+입력: phase7_ml/summary, predictions, cross_validation, confidence_grades
+출력: phase7_ml/figures/01~06_*.png
 """
 
 import sys
@@ -36,14 +13,10 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from pathlib import Path
 
-# 한글 폰트 설정 (Windows)
 plt.rcParams["font.family"] = "Malgun Gothic"
 plt.rcParams["axes.unicode_minus"] = False
 
 
-# ---------------------------------------------------------------------------
-# 데이터 로드
-# ---------------------------------------------------------------------------
 def load_all_data(ml_dir):
     """Phase 7-ML 결과를 전부 로드한다."""
     ml_dir = Path(ml_dir)
@@ -77,9 +50,6 @@ def load_all_data(ml_dir):
     return summary, pred_all, cv_all, gr_all
 
 
-# ---------------------------------------------------------------------------
-# 1. 신뢰도 등급 분포
-# ---------------------------------------------------------------------------
 def plot_grade_distribution(cv_all, fig_dir):
     """신뢰도 등급 파이 차트 + 막대 차트."""
     stat_yes_ml_yes = (cv_all["stat_detected"] & cv_all["ml_detected"]).sum()
@@ -93,7 +63,6 @@ def plot_grade_distribution(cv_all, fig_dir):
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
 
-    # 파이 차트 (DB 적재 대상만)
     db_values = values[:3]
     db_labels = labels[:3]
     db_colors = colors[:3]
@@ -101,7 +70,6 @@ def plot_grade_distribution(cv_all, fig_dir):
             startangle=90, textprops={"fontsize": 10})
     ax1.set_title(f"DB 적재 대상 ({sum(db_values)}건)", fontsize=13, fontweight="bold")
 
-    # 막대 차트 (전체)
     bars = ax2.bar(labels, values, color=colors, edgecolor="black", linewidth=0.5)
     for bar, val in zip(bars, values):
         ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 30,
@@ -117,9 +85,6 @@ def plot_grade_distribution(cv_all, fig_dir):
     print("[시각화] 01_grade_distribution.png 저장")
 
 
-# ---------------------------------------------------------------------------
-# 2. 품목별 신뢰도 등급
-# ---------------------------------------------------------------------------
 def plot_grade_by_commodity(summary, fig_dir):
     """품목별 가로 누적 막대 차트."""
     cid_stats = summary.groupby("commodity_id")[
@@ -152,9 +117,6 @@ def plot_grade_by_commodity(summary, fig_dir):
     print("[시각화] 02_grade_by_commodity.png 저장")
 
 
-# ---------------------------------------------------------------------------
-# 3. 합의 수 분포
-# ---------------------------------------------------------------------------
 def plot_consensus_distribution(pred_all, fig_dir):
     """3종 모델 합의 수 분포 막대 차트."""
     consensus = pred_all["ml_consensus_count"].value_counts().sort_index()
@@ -186,9 +148,6 @@ def plot_consensus_distribution(pred_all, fig_dir):
     print("[시각화] 03_consensus_distribution.png 저장")
 
 
-# ---------------------------------------------------------------------------
-# 4. 통계-ML 교차 대조 히트맵
-# ---------------------------------------------------------------------------
 def plot_cross_validation_heatmap(cv_all, fig_dir):
     """통계-ML 교차표 히트맵."""
     stat_yes_ml_yes = (cv_all["stat_detected"] & cv_all["ml_detected"]).sum()
@@ -223,9 +182,6 @@ def plot_cross_validation_heatmap(cv_all, fig_dir):
     print("[시각화] 04_cross_validation_heatmap.png 저장")
 
 
-# ---------------------------------------------------------------------------
-# 5. 개별 품목x구간 타임라인
-# ---------------------------------------------------------------------------
 def plot_timeline(pred_all, cv_all, cid, seg, fig_dir):
     """개별 품목x구간의 탐지 타임라인."""
     pred = pred_all[(pred_all["commodity_id"] == cid) & (pred_all["segment"] == seg)].copy()
@@ -239,7 +195,6 @@ def plot_timeline(pred_all, cv_all, cid, seg, fig_dir):
 
     dates = pred["date"]
 
-    # (1) 이상 점수
     ax = axes[0]
     ax.plot(dates, pred["if_score"], label="IF score", color="#1976d2", alpha=0.7, linewidth=0.8)
     ax.plot(dates, pred["lof_score"], label="LOF score", color="#388e3c", alpha=0.7, linewidth=0.8)
@@ -251,7 +206,6 @@ def plot_timeline(pred_all, cv_all, cid, seg, fig_dir):
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
 
-    # (2) 모델별 탐지
     ax = axes[1]
     for idx, (model, color) in enumerate([("if_anomaly", "#1976d2"),
                                            ("lof_anomaly", "#388e3c"),
@@ -264,7 +218,6 @@ def plot_timeline(pred_all, cv_all, cid, seg, fig_dir):
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
 
-    # (3) ML 앙상블 결과
     ax = axes[2]
     ml_dates = dates[pred["ml_detected"] == True]
     ax.scatter(ml_dates, [0] * len(ml_dates), c="#d32f2f", s=12, marker="s", label="ml_detected")
@@ -274,7 +227,6 @@ def plot_timeline(pred_all, cv_all, cid, seg, fig_dir):
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
 
-    # (4) 신뢰도 등급
     ax = axes[3]
     grade_colors = {"high": "#d32f2f", "medium": "#ff9800", "reference": "#2196f3"}
     cv_merged = pred[["date"]].reset_index(drop=True).merge(
@@ -305,9 +257,6 @@ def plot_timeline(pred_all, cv_all, cid, seg, fig_dir):
     print(f"[시각화] 05_timeline_{cid}_{seg}.png 저장")
 
 
-# ---------------------------------------------------------------------------
-# 6. 모델별 이상 점수 박스플롯
-# ---------------------------------------------------------------------------
 def plot_score_boxplot(pred_all, fig_dir):
     """모델별 이상 점수 분포 박스플롯."""
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
@@ -342,11 +291,8 @@ def plot_score_boxplot(pred_all, fig_dir):
     print("[시각화] 06_score_boxplot.png 저장")
 
 
-# ---------------------------------------------------------------------------
-# 전체 실행
-# ---------------------------------------------------------------------------
 def run_visualize(ml_dir):
-    """Phase 7-ML 시각화를 전체 실행한다."""
+    """Phase 7-ML 시각화 전체 실행."""
     ml_dir = Path(ml_dir)
     fig_dir = ml_dir / "figures"
     fig_dir.mkdir(parents=True, exist_ok=True)
@@ -356,13 +302,11 @@ def run_visualize(ml_dir):
     print(f"[시각화] 로드 완료: predictions={len(pred_all)}, cross_val={len(cv_all)}, grades={len(gr_all)}")
     print()
 
-    # 1~4: 전체 차트
     plot_grade_distribution(cv_all, fig_dir)
     plot_grade_by_commodity(summary, fig_dir)
     plot_consensus_distribution(pred_all, fig_dir)
     plot_cross_validation_heatmap(cv_all, fig_dir)
 
-    # 5: 타임라인 (주요 품목 6개)
     timeline_targets = [
         ("wheat", "A"), ("beef", "B"), ("banana", "A"),
         ("sugar", "A"), ("palmoil", "B"), ("coffee", "A"),
@@ -370,16 +314,12 @@ def run_visualize(ml_dir):
     for cid, seg in timeline_targets:
         plot_timeline(pred_all, cv_all, cid, seg, fig_dir)
 
-    # 6: 박스플롯
     plot_score_boxplot(pred_all, fig_dir)
 
     print()
     print(f"[시각화] 전체 완료. 저장 위치: {fig_dir}")
 
 
-# ---------------------------------------------------------------------------
-# 메인 실행
-# ---------------------------------------------------------------------------
 if __name__ == "__main__":
     ML_DIR = os.path.join(
         os.path.dirname(__file__), "..", "..", "..", "data", "processed", "phase7_ml"

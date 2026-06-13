@@ -1,15 +1,4 @@
-"""Redis 캐싱 단위 테스트 — feature_spec_BE-REDIS_v2 §7 완료 기준.
-
-테스트 범위:
-  - cache_get / cache_set / cache_delete_pattern 헬퍼 함수
-  - HIT / MISS 흐름
-  - DB-CACHE-001: Redis 연결 실패 시 폴백 (WARN + None 반환)
-  - DB-CACHE-002: JSON 역직렬화 실패 시 키 삭제 후 DB 재조회
-  - PARSE-REDIS-001: Pydantic 검증 실패 시 캐시 무효화 후 DB 재조회
-  - 배치 완료 후 캐시 무효화 (invalidate_cache)
-
-의존: unittest.mock.AsyncMock (fakeredis 미설치 환경 대응)
-"""
+"""Redis 캐싱 단위 테스트. cache_get/set/delete와 HIT/MISS 흐름 및 에러 폴백을 검증한다."""
 from __future__ import annotations
 
 import json
@@ -25,10 +14,8 @@ from app.cache.redis import (
     cached_or_compute,
 )
 
-# ── 헬퍼: 가짜 Redis 클라이언트 ───────────────────────────────────────────────
 
 def _make_redis(get_return=None, raise_on_get=False, raise_on_set=False):
-    """AsyncMock 기반 Redis 클라이언트 스텁 생성."""
     client = AsyncMock()
     if raise_on_get:
         client.get.side_effect = ConnectionError("Redis down")
@@ -40,11 +27,9 @@ def _make_redis(get_return=None, raise_on_get=False, raise_on_set=False):
     return client
 
 
-# ── cache_get 테스트 ──────────────────────────────────────────────────────────
-
 @pytest.mark.asyncio
 async def test_cache_get_miss_returns_none():
-    """키가 없으면 None을 반환한다 (MISS)."""
+    """키가 없으면 None 반환 (MISS)."""
     client = _make_redis(get_return=None)
     result = await cache_get(client, "test:key")
     assert result is None
@@ -52,7 +37,7 @@ async def test_cache_get_miss_returns_none():
 
 @pytest.mark.asyncio
 async def test_cache_get_hit_returns_dict():
-    """키가 있고 JSON 파싱 성공 시 dict를 반환한다 (HIT)."""
+    """키가 있고 JSON 파싱 성공 시 dict 반환 (HIT)."""
     payload = {"commodity_id": "wheat", "total_points": 10}
     client = _make_redis(get_return=json.dumps(payload))
     result = await cache_get(client, "test:key")
@@ -61,7 +46,7 @@ async def test_cache_get_hit_returns_dict():
 
 @pytest.mark.asyncio
 async def test_cache_get_connection_error_returns_none(caplog):
-    """Redis 연결 실패(DB-CACHE-001) 시 WARN 로그 + None 반환."""
+    """Redis 연결 실패(DB-CACHE-001) 시 WARN 로그를 남기고 None을 반환한다."""
     client = _make_redis(raise_on_get=True)
     with caplog.at_level("WARNING"):
         result = await cache_get(client, "test:key")
@@ -71,7 +56,7 @@ async def test_cache_get_connection_error_returns_none(caplog):
 
 @pytest.mark.asyncio
 async def test_cache_get_invalid_json_deletes_key_and_returns_none(caplog):
-    """JSON 역직렬화 실패(DB-CACHE-002) 시 해당 키 삭제 + None 반환."""
+    """JSON 역직렬화 실패(DB-CACHE-002) 시 해당 키를 삭제하고 None을 반환한다."""
     client = _make_redis(get_return="NOT_VALID_JSON{{{")
     with caplog.at_level("WARNING"):
         result = await cache_get(client, "test:broken_key")
@@ -80,11 +65,9 @@ async def test_cache_get_invalid_json_deletes_key_and_returns_none(caplog):
     client.delete.assert_called_once_with("test:broken_key")
 
 
-# ── cache_set 테스트 ──────────────────────────────────────────────────────────
-
 @pytest.mark.asyncio
 async def test_cache_set_stores_json():
-    """dict를 JSON 직렬화하여 지정 TTL로 저장한다."""
+    """dict를 JSON 직렬화하여 지정 TTL로 저장."""
     client = AsyncMock()
     client.set.return_value = True
     payload = {"commodity_id": "wheat", "total_points": 5}
@@ -94,23 +77,21 @@ async def test_cache_set_stores_json():
     assert call_args[0][0] == "test:key"
     stored = json.loads(call_args[0][1])
     assert stored == payload
-    assert call_args[1].get("ex") == 3600  # TTL이 키워드 인자 ex=3600 으로 전달되는지 검증
+    assert call_args[1].get("ex") == 3600
 
 
 @pytest.mark.asyncio
 async def test_cache_set_connection_error_logs_warn(caplog):
-    """쓰기 실패(DB-CACHE-001) 시 WARN 로그만 남기고 서비스 중단 없음."""
+    """쓰기 실패(DB-CACHE-001) 시 WARN 로그만 남기고 서비스를 중단하지 않는다."""
     client = _make_redis(raise_on_set=True)
     with caplog.at_level("WARNING"):
         await cache_set(client, "test:key", {"x": 1}, ttl=3600)
     assert "DB-CACHE-001" in caplog.text
 
 
-# ── cache_delete_pattern 테스트 ───────────────────────────────────────────────
-
 @pytest.mark.asyncio
 async def test_cache_delete_pattern_removes_matching_keys():
-    """패턴 매칭 키를 모두 삭제하고 건수를 반환한다."""
+    """패턴 매칭 키를 모두 삭제하고 건수를 반환."""
     client = AsyncMock()
     keys = ["pricelens:stream:wheat:all:default:default:monthly",
             "pricelens:stream:banana:all:2020-01:2026-03:monthly"]
@@ -129,12 +110,12 @@ async def test_cache_delete_pattern_removes_matching_keys():
 
 @pytest.mark.asyncio
 async def test_cache_delete_pattern_connection_error_returns_zero(caplog):
-    """삭제 중 연결 실패(DB-CACHE-001) 시 WARN + 0 반환."""
+    """삭제 중 연결 실패(DB-CACHE-001) 시 WARN을 남기고 0을 반환한다."""
     client = AsyncMock()
 
     async def mock_scan_iter_raise(match, count):
         raise ConnectionError("Redis down")
-        yield  # noqa: unreachable — async generator 마커
+        yield  # noqa: unreachable -- async generator 마커
 
     client.scan_iter = mock_scan_iter_raise
     with caplog.at_level("WARNING"):
@@ -143,6 +124,7 @@ async def test_cache_delete_pattern_connection_error_returns_zero(caplog):
     assert "DB-CACHE-001" in caplog.text
 
 
+# TODO: TTL 경계 케이스(0, 음수, 매우 큰 값) 처리 동작 검증 추가 검토
 @pytest.mark.asyncio
 async def test_cache_delete_pattern_no_matching_keys():
     """매칭 키가 없으면 0 반환, delete 미호출."""
@@ -158,11 +140,9 @@ async def test_cache_delete_pattern_no_matching_keys():
     client.delete.assert_not_called()
 
 
-# ── 통합 흐름 테스트 ─────────────────────────────────────────────────────────
-
 @pytest.mark.asyncio
 async def test_hit_miss_flow():
-    """MISS 후 set, 다시 HIT 흐름을 순서대로 검증한다."""
+    """MISS 후 set, 다시 HIT 흐름 순서대로 검증."""
     store: dict[str, str] = {}
     client = AsyncMock()
 
@@ -190,22 +170,14 @@ async def test_hit_miss_flow():
     assert result == payload
 
 
-# ── PARSE-REDIS-001 시나리오 ─────────────────────────────────────────────────
-
 @pytest.mark.asyncio
 async def test_parse_redis_001_scenario():
-    """캐시에 올바른 JSON이지만 스키마 불일치인 경우 PARSE-REDIS-001 처리를 검증한다.
-
-    실제 Pydantic 검증은 endpoint 레이어에서 발생한다.
-    이 테스트는 cache_get이 valid JSON dict를 반환하는 것까지 확인하고,
-    endpoint 레이어의 ValidationError 처리 경로를 단위 수준으로 검증한다.
-    """
+    """올바른 JSON이지만 스키마 불일치 시 PARSE-REDIS-001 경로를 검증한다."""
     from pydantic import ValidationError
 
     from app.schemas.timeseries import StreamResponse
 
-    # 스키마와 불일치하는 구 캐시 JSON (commodity_id 누락)
-    stale_payload = {"total_points": 5, "granularity": "monthly"}
+    stale_payload = {"total_points": 5, "granularity": "monthly"}  # commodity_id 누락
     client = _make_redis(get_return=json.dumps(stale_payload))
     client.delete.return_value = 1
 
@@ -217,11 +189,9 @@ async def test_parse_redis_001_scenario():
         StreamResponse.model_validate(stale_payload)
 
 
-# ── invalidate_cache 테스트 ───────────────────────────────────────────────────
-
 @pytest.mark.asyncio
 async def test_invalidate_cache_deletes_all_three_patterns():
-    """invalidate_cache 호출 시 stream/raw-prices/stat-series 세 패턴이 삭제된다."""
+    """invalidate_cache 호출 시 stream/raw-prices/stat-series 세 패턴 삭제."""
     from app.services.batch import invalidate_cache
 
     deleted_patterns: list[str] = []
@@ -241,15 +211,13 @@ async def test_invalidate_cache_deletes_all_three_patterns():
     assert len(deleted_patterns) == 3
 
 
-# ── cached_or_compute 테스트 (엔드포인트 HIT/MISS 헬퍼) ───────────────────────
-
 class _Toy(BaseModel):
     x: int
 
 
 @pytest.mark.asyncio
 async def test_cached_or_compute_miss_calls_compute_and_sets():
-    """MISS → compute() 실행 + 결과 캐시 적재."""
+    """MISS 시 compute()를 실행하고 결과를 캐시에 적재한다."""
     store: dict[str, str] = {}
     client = AsyncMock()
 
@@ -276,7 +244,7 @@ async def test_cached_or_compute_miss_calls_compute_and_sets():
 
 @pytest.mark.asyncio
 async def test_cached_or_compute_hit_skips_compute():
-    """HIT(검증 통과) → compute() 미실행."""
+    """HIT 검증 통과 시 compute()를 실행하지 않는다."""
     client = _make_redis(get_return=json.dumps({"x": 5}))
 
     calls: list[int] = []
@@ -292,7 +260,7 @@ async def test_cached_or_compute_hit_skips_compute():
 
 @pytest.mark.asyncio
 async def test_cached_or_compute_invalid_cache_falls_back(caplog):
-    """HIT 값 스키마 불일치(PARSE-REDIS-001) → 캐시 삭제 + compute 폴백."""
+    """스키마 불일치(PARSE-REDIS-001) 시 캐시를 삭제하고 compute로 폴백한다."""
     client = _make_redis(get_return=json.dumps({"y": "bad"}))  # x 누락
     client.delete.return_value = 1
 

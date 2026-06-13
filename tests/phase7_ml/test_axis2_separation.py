@@ -1,20 +1,4 @@
-"""
-축 2 -- 이상 점수 분리도
-=========================
-역할:
-  ML 모델이 이상/정상을 내적으로 얼마나 일관되게 구분하는지를
-  이상 점수 분포의 분리도(Separation Ratio)로 평가한다.
-
-  SR = |median(이상) - median(정상)| / mean(IQR_이상, IQR_정상)
-    SR > 2.0: 양호, SR 1.0~2.0: 보통, SR < 1.0: 약함
-
-입력 파일:
-  - data/processed/phase7_ml/predictions/{cid}_{seg}_ml_predictions.csv
-
-출력: 분리도 결과 dict + violin plot
-
-위치: tests/phase7_ml/test_axis2_separation.py
-"""
+"""축 2: 이상 점수 분리도(Separation Ratio) 산출."""
 
 import sys
 import os
@@ -26,7 +10,6 @@ from eval_common import load_predictions, get_ml_segments, log_eval
 
 
 def compute_separation_ratio(scores_anomaly, scores_normal):
-    """Separation Ratio를 산출한다."""
     if len(scores_anomaly) < 2 or len(scores_normal) < 2:
         return np.nan
 
@@ -44,7 +27,6 @@ def compute_separation_ratio(scores_anomaly, scores_normal):
 
 
 def compute_separation_segment(pred_df):
-    """단일 품목x구간에 대해 3종 모델의 분리도를 산출한다."""
     anomaly = pred_df[pred_df["ml_detected"] == True]
     normal = pred_df[pred_df["ml_detected"] == False]
 
@@ -60,7 +42,6 @@ def compute_separation_segment(pred_df):
 
 
 def run_axis2(data_dir, ml_dir):
-    """전 20개 구간에 대해 분리도를 산출한다."""
     segments = get_ml_segments(data_dir)
     log_eval("축 2 (분리도) 시작")
 
@@ -78,7 +59,6 @@ def run_axis2(data_dir, ml_dir):
             f"SR_if={sr['sr_if']}, SR_lof={sr['sr_lof']}, SR_svm={sr['sr_svm']}"
         )
 
-    # 전체 평균
     sr_df = pd.DataFrame(all_results)
     avg_if = sr_df["sr_if"].mean()
     avg_lof = sr_df["sr_lof"].mean()

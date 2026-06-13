@@ -1,22 +1,4 @@
-"""
-축 1 -- 외부 충격 회수율 (ESR_ml)
-==================================
-역할:
-  이력적으로 알려진 외부 거시 충격 사건의 발생 윈도우 내에서
-  ML이 이상을 탐지한 비율을 산출한다.
-  충격 윈도우 내 1건 이상 탐지 시 해당 충격을 "회수"한 것으로 처리.
-
-  ML 탐지 가능 기간에 충격이 포함되는 경우만 분모에 산입한다.
-
-입력 파일:
-  - data/processed/phase7_ml/predictions/{cid}_{seg}_ml_predictions.csv
-  - data/processed/phase4/baseline/{cid}_{seg}_baseline.json
-  - data/processed/product_config.json
-
-출력: ESR 결과 dict (run_all_evaluation에서 취합)
-
-위치: tests/phase7_ml/test_axis1_esr.py
-"""
+"""축 1: 외부 충격 회수율(ESR_ml) 산출."""
 
 import sys
 import os
@@ -34,14 +16,7 @@ from eval_common import (
 
 
 def compute_esr_segment(pred_df, shocks):
-    """
-    단일 품목x구간에 대해 모델별 + 앙상블 ESR을 산출한다.
-
-    충격 윈도우 내 1건 이상 탐지 시 해당 충격을 회수한 것으로 처리.
-
-    Returns:
-        dict {shock_id: {if, lof, svm, ml_detected}, ...}, esr_summary
-    """
+    """단일 품목x구간의 모델별 + 앙상블 ESR을 산출한다."""
     shock_results = []
 
     for shock in shocks:
@@ -88,7 +63,6 @@ def compute_esr_segment(pred_df, shocks):
 
 
 def run_axis1(data_dir, ml_dir):
-    """전 20개 구간에 대해 ESR을 산출한다."""
     segments = get_ml_segments(data_dir)
     log_eval("축 1 (ESR) 시작")
 
@@ -115,7 +89,6 @@ def run_axis1(data_dir, ml_dir):
             f"ESR_ml={esr_summary['esr_ml']}"
         )
 
-    # 전체 가중 평균
     total_shocks = sum(r["n_shocks"] for r in all_results)
     if total_shocks > 0:
         weighted_esr = sum(

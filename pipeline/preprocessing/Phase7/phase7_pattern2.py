@@ -1,48 +1,8 @@
 """
-Phase 7 패턴 2 -- 전이율 크기 이탈 및 비대칭 전달(로켓-깃털 효과) 탐지
-=====================================================================
-역할:
-  (1) Z-score + IQR 교차 판정:
-      롤링 48개월 윈도우로 전이율의 Z-score와 IQR을 산출한다.
-      t시점 판정에는 t-1까지의 데이터만 사용하여 미래 정보 유출을 방지한다.
-      Z-score >= 2.5(경보) AND IQR 이탈을 동시 충족할 때 최종 경보를 확정한다.
-      최초 48개월(warmup)은 기준 분포 축적 기간으로 탐지를 수행하지 않는다.
+Phase 7 패턴 2. 전이율 크기 이탈(Z-score+IQR) 및 비대칭 전달(로켓-깃털) 탐지.
 
-  (2) 로버스트니스 체크:
-      W=36, W=60으로 Z-score를 재산출하여 탐지 민감도를 비교한다.
-
-  (3) 비대칭 검정:
-      공적분 있는 구간 -> TECM: ECT를 양/음 분리, alpha+/alpha- 추정, Wald 검정.
-      공적분 없는 구간 -> 비대칭 VAR: 상승/하락기 더미 교차항 OLS.
-      전체 기간 1회 수행.
-
-입력 파일:
-  - data/processed/product_config.json
-  - data/processed/phase3/model_routing.json
-  - data/processed/phase1/changes/{cid}_changes.csv
-  - data/processed/phase4/baseline/{cid}_{seg}_baseline.json
-  - data/processed/phase4/ect/{cid}_{seg}_ect.csv
-
-출력 파일:
-  - data/processed/phase7/pattern2/{cid}_{seg}_pattern2_zscore.csv   (20개)
-  - data/processed/phase7/pattern2/{cid}_{seg}_pattern2_asymmetry.csv (20개)
-  - data/processed/phase7/pattern2/pattern2_summary_stats.csv         (1개)
-  - data/processed/phase7/robustness/{cid}_{seg}_robustness_W36.csv  (20개)
-  - data/processed/phase7/robustness/{cid}_{seg}_robustness_W60.csv  (20개)
-
-출력 CSV 컬럼 (pattern2_zscore):
-  date, commodity_id, segment,
-  upstream_pct, downstream_pct, transmission_rate,
-  rolling_mean, rolling_std, zscore,
-  q1, q3, iqr, iqr_lower, iqr_upper,
-  zscore_warning, zscore_alert, iqr_outlier,
-  pattern2_flag, deviation_type, in_warmup_period
-
-출력 CSV 컬럼 (pattern2_asymmetry):
-  commodity_id, segment, method, cointegrated,
-  alpha_positive, alpha_negative, test_statistic, p_value,
-  asymmetry_significant, asymmetry_direction,
-  mean_tr_up, mean_tr_down, n_up, n_down
+Z-score 경보(>= 2.5) + IQR 이탈 동시 충족 시 flag. warmup 48개월 제외.
+비대칭 검정: 공적분 있으면 TECM 적용, 없으면 비대칭 VAR 적용 (Wald 검정).
 """
 
 import sys
@@ -75,32 +35,15 @@ from phase7_common import (
 )
 
 
-# ---------------------------------------------------------------------------
-# 롤링 Z-score + IQR 산출
-# ---------------------------------------------------------------------------
 def compute_rolling_stats(transmission_rate, window, warmup_end):
     """
-    롤링 윈도우 기반으로 Z-score와 IQR 통계를 산출한다.
-
-    t시점 판정에는 t-1까지의 데이터만 사용한다 (look-ahead bias 방지).
-    전이율이 NaN인 달은 롤링 통계에서 자동 제외된다.
-    warmup_end 이전은 in_warmup_period=True로 표시하고 탐지하지 않는다.
-
-    Args:
-        transmission_rate: 전이율 Series (NaN 포함)
-        window: 롤링 윈도우 크기 (개월)
-        warmup_end: warmup 종료 Timestamp
-
-    Returns:
-        DataFrame (rolling_mean, rolling_std, zscore, q1, q3, iqr,
-                   iqr_lower, iqr_upper, zscore_warning, zscore_alert,
-                   iqr_outlier, pattern2_flag, deviation_type, in_warmup_period)
+    롤링 Z-score + IQR 산출. t시점 판정에 t-1까지만 사용 (look-ahead bias 방지).
+    warmup_end 이전은 in_warmup_period=True로 표시하고 탐지 제외.
     """
     n = len(transmission_rate)
     dates = transmission_rate.index
     tr_vals = transmission_rate.values
 
-    # 결과 배열 초기화
     rolling_mean = np.full(n, np.nan)
     rolling_std = np.full(n, np.nan)
     zscore = np.full(n, np.nan)
@@ -111,13 +54,11 @@ def compute_rolling_stats(transmission_rate, window, warmup_end):
     iqr_upper = np.full(n, np.nan)
 
     for t in range(1, n):
-        # t-1까지의 윈도우에서 유효값 추출
         start_idx = max(0, t - window)
         window_data = tr_vals[start_idx:t]
         valid = window_data[~np.isnan(window_data)]
 
         if len(valid) < 10:
-            # 유효값이 10개 미만이면 통계 산출 불가
             continue
 
         mean_val = np.mean(valid)
@@ -136,11 +77,9 @@ def compute_rolling_stats(transmission_rate, window, warmup_end):
         iqr_lower[t] = q1_val - IQR_MULTIPLIER * iqr_val
         iqr_upper[t] = q3_val + IQR_MULTIPLIER * iqr_val
 
-        # Z-score 산출
         if std_val > 1e-10 and not np.isnan(tr_vals[t]):
             zscore[t] = (tr_vals[t] - mean_val) / std_val
 
-    # 판정
     zscore_warning_arr = np.abs(zscore) >= ZSCORE_WARNING
     zscore_alert_arr = np.abs(zscore) >= ZSCORE_ALERT
     iqr_outlier_arr = np.zeros(n, dtype=bool)
@@ -150,13 +89,11 @@ def compute_rolling_stats(transmission_rate, window, warmup_end):
                 tr_vals[t] < iqr_lower[t] or tr_vals[t] > iqr_upper[t]
             )
 
-    # warmup 판정
     in_warmup = np.array([d <= warmup_end for d in dates], dtype=bool)
 
-    # 최종 판정: Z-score 경보 AND IQR 이탈 AND warmup 아님
+    # Z-score 경보 + IQR 이탈 + warmup 아님을 동시 충족 시 flag
     pattern2_flag = zscore_alert_arr & iqr_outlier_arr & ~in_warmup
 
-    # 이탈 방향 (bool 분리 - pipeline_output_spec_v7 기준)
     over_transmission = pattern2_flag & (tr_vals > rolling_mean)
     under_transmission = pattern2_flag & (tr_vals <= rolling_mean)
 
@@ -184,49 +121,29 @@ def compute_rolling_stats(transmission_rate, window, warmup_end):
     return result
 
 
-# ---------------------------------------------------------------------------
-# 비대칭 검정 -- TECM (공적분 있는 구간)
-# ---------------------------------------------------------------------------
 def run_tecm_asymmetry(ect_series, changes_df, upstream_pct_col,
                        downstream_pct_col, lag_order):
     """
-    Threshold ECM 비대칭 검정을 수행한다.
-
-    ECT를 양수/음수로 분리하여 오차수정 계수(alpha+, alpha-)를 추정하고,
-    Wald 검정으로 alpha+ = alpha- 귀무가설을 검정한다.
-
-    Args:
-        ect_series: ECT 시계열 Series
-        changes_df: 변화율 DataFrame
-        upstream_pct_col: 상류 변화율 컬럼명
-        downstream_pct_col: 하류 변화율 컬럼명
-        lag_order: VAR/VECM 시차
-
-    Returns:
-        dict (alpha_positive, alpha_negative, test_statistic, p_value,
-              asymmetry_significant, asymmetry_direction)
+    TECM 비대칭 검정. ECT 양/음 분리 후 alpha+/alpha- OLS 추정, Wald 검정.
+    H0: alpha+ = alpha-.
     """
-    # 공통 인덱스 정렬
     common_idx = ect_series.index.intersection(changes_df.index)
     ect = ect_series.loc[common_idx].values
     dy = changes_df.loc[common_idx, downstream_pct_col].values
 
-    # ECT를 양/음으로 분리 (1기 전 ECT 사용)
+    # 1기 전 ECT를 양/음으로 분리
     n = len(ect)
     if n < lag_order + 10:
         return _empty_asymmetry_result("TECM", True)
 
-    # 종속변수: dy_t, 독립변수: ECT+_{t-1}, ECT-_{t-1}, 시차항
     y = dy[lag_order + 1:]
     ect_lagged = ect[lag_order:-1]
 
     ect_pos = np.where(ect_lagged > 0, ect_lagged, 0)
     ect_neg = np.where(ect_lagged < 0, ect_lagged, 0)
 
-    # 설계 행렬: [ECT+, ECT-, 상수]
     X = np.column_stack([ect_pos, ect_neg, np.ones(len(y))])
 
-    # 유효값 필터
     valid = ~np.isnan(y) & ~np.isnan(ect_pos) & ~np.isnan(ect_neg)
     if valid.sum() < 10:
         return _empty_asymmetry_result("TECM", True)
@@ -234,7 +151,6 @@ def run_tecm_asymmetry(ect_series, changes_df, upstream_pct_col,
     y_valid = y[valid]
     X_valid = X[valid]
 
-    # OLS 추정
     try:
         beta, residuals, rank, sv = np.linalg.lstsq(X_valid, y_valid, rcond=None)
     except np.linalg.LinAlgError:
@@ -243,7 +159,6 @@ def run_tecm_asymmetry(ect_series, changes_df, upstream_pct_col,
     alpha_pos = beta[0]
     alpha_neg = beta[1]
 
-    # Wald 검정: H0: alpha+ = alpha-
     n_obs = len(y_valid)
     k = X_valid.shape[1]
     if n_obs <= k:
@@ -258,7 +173,7 @@ def run_tecm_asymmetry(ect_series, changes_df, upstream_pct_col,
     except np.linalg.LinAlgError:
         return _empty_asymmetry_result("TECM", True)
 
-    # R*beta = r, R = [1, -1, 0], r = 0
+    # Wald 검정: R*beta = [alpha+ - alpha-], H0: 0
     R = np.array([[1, -1, 0]])
     r = np.array([0])
     Rb = R @ beta - r
@@ -269,7 +184,6 @@ def run_tecm_asymmetry(ect_series, changes_df, upstream_pct_col,
 
     p_value = 1 - sp_stats.chi2.cdf(wald_stat, df=1)
 
-    # 비대칭 방향 판단 (pipeline_output_spec_v7 기준 값)
     direction = None
     if p_value < 0.05:
         if abs(alpha_pos) > abs(alpha_neg):
@@ -290,26 +204,11 @@ def run_tecm_asymmetry(ect_series, changes_df, upstream_pct_col,
     }
 
 
-# ---------------------------------------------------------------------------
-# 비대칭 검정 -- 비대칭 VAR (공적분 없는 구간)
-# ---------------------------------------------------------------------------
 def run_asymmetric_var(changes_df, upstream_pct_col, downstream_pct_col,
                        lag_order):
     """
-    비대칭 VAR 검정을 수행한다.
-
-    상승기/하락기 더미 변수(D_t = 1 if upstream_pct > 0, else 0)를
-    교차항으로 포함시켜 국면별 전이 계수 차이를 검정한다.
-
-    Args:
-        changes_df: 변화율 DataFrame
-        upstream_pct_col: 상류 변화율 컬럼명
-        downstream_pct_col: 하류 변화율 컬럼명
-        lag_order: VAR 시차
-
-    Returns:
-        dict (alpha_positive, alpha_negative, test_statistic, p_value,
-              asymmetry_significant, asymmetry_direction)
+    비대칭 VAR 검정. 상승/하락기 더미 교차항 OLS + Wald 검정.
+    H0: beta_up = beta_dn.
     """
     up = changes_df[upstream_pct_col].values
     dn = changes_df[downstream_pct_col].values
@@ -318,11 +217,9 @@ def run_asymmetric_var(changes_df, upstream_pct_col, downstream_pct_col,
     if n < lag_order + 10:
         return _empty_asymmetry_result("AsymVAR", False)
 
-    # 종속변수: dn_t, 독립변수: up_{t-1}*D, up_{t-1}*(1-D), 상수
     y = dn[lag_order + 1:]
     up_lagged = up[lag_order:-1]
 
-    # 유효값 필터
     valid = ~np.isnan(y) & ~np.isnan(up_lagged)
     if valid.sum() < 10:
         return _empty_asymmetry_result("AsymVAR", False)
@@ -330,25 +227,21 @@ def run_asymmetric_var(changes_df, upstream_pct_col, downstream_pct_col,
     y_v = y[valid]
     up_v = up_lagged[valid]
 
-    # 상승기/하락기 분리
     d_up = (up_v > 0).astype(float)
     d_dn = 1 - d_up
-
-    up_pos = up_v * d_up   # 상승기 상류 변화율
-    up_neg = up_v * d_dn   # 하락기 상류 변화율
+    up_pos = up_v * d_up
+    up_neg = up_v * d_dn
 
     X = np.column_stack([up_pos, up_neg, np.ones(len(y_v))])
 
-    # OLS 추정
     try:
         beta, _, _, _ = np.linalg.lstsq(X, y_v, rcond=None)
     except np.linalg.LinAlgError:
         return _empty_asymmetry_result("AsymVAR", False)
 
-    beta_up = beta[0]   # 상승기 전이 계수
-    beta_dn = beta[1]   # 하락기 전이 계수
+    beta_up = beta[0]
+    beta_dn = beta[1]
 
-    # Wald 검정: H0: beta_up = beta_dn
     n_obs = len(y_v)
     k = X.shape[1]
     if n_obs <= k:
@@ -394,7 +287,7 @@ def run_asymmetric_var(changes_df, upstream_pct_col, downstream_pct_col,
 
 
 def _empty_asymmetry_result(method, cointegrated):
-    """데이터 부족 시 비대칭 검정 빈 결과를 반환한다."""
+    """데이터 부족 시 비대칭 검정 빈 결과 반환."""
     model_type = "TECM" if method == "TECM" else "asymmetric_VAR"
     return {
         "model_type": model_type,
@@ -409,11 +302,8 @@ def _empty_asymmetry_result(method, cointegrated):
     }
 
 
-# ---------------------------------------------------------------------------
-# 보조: 전이율 상승기/하락기 평균 (단순 비교용)
-# ---------------------------------------------------------------------------
 def compute_mean_tr_by_regime(transmission_rate, upstream_pct):
-    """상승기/하락기별 평균 전이율을 산출한다."""
+    """상승기/하락기별 평균 전이율 산출."""
     valid = transmission_rate.notna() & upstream_pct.notna()
     tr_v = transmission_rate[valid]
     up_v = upstream_pct[valid]
@@ -429,17 +319,8 @@ def compute_mean_tr_by_regime(transmission_rate, upstream_pct):
     return mean_up, mean_dn, n_up, n_dn
 
 
-# ---------------------------------------------------------------------------
-# 패턴 2 단일 구간 실행
-# ---------------------------------------------------------------------------
 def run_pattern2_segment(paths, config, routing, cid, seg):
-    """
-    단일 품목x구간에 대해 패턴 2 탐지를 수행한다.
-
-    Returns:
-        (zscore_df, asymmetry_dict, robustness_dfs)
-    """
-    # 데이터 로드
+    """단일 품목x구간에 대해 패턴 2 탐지를 수행한다. 반환: (zscore_df, asymmetry_dict, robustness_dfs)."""
     df = load_changes(paths, cid)
     baseline = load_baseline(paths, cid, seg)
     ect_df = load_ect(paths, cid, seg)
@@ -450,13 +331,10 @@ def run_pattern2_segment(paths, config, routing, cid, seg):
     downstream_pct = df[dn_pct_col]
     warmup_end = get_warmup_end(baseline)
 
-    # 전이율 산출
     tr = compute_transmission_rate(upstream_pct, downstream_pct)
 
-    # --- (1) Z-score + IQR (기본 윈도우 W=48) ---
     stats_df = compute_rolling_stats(tr, ROLLING_WINDOW, warmup_end)
 
-    # 기본 컬럼 추가
     zscore_df = pd.DataFrame(
         {
             "date": df.index,
@@ -470,11 +348,10 @@ def run_pattern2_segment(paths, config, routing, cid, seg):
     for col in stats_df.columns:
         zscore_df[col] = stats_df[col].values
 
-    # --- (2) 로버스트니스 (W=36, W=60) ---
     robustness_dfs = {}
     for w in ROLLING_WINDOW_ROBUSTNESS:
         if w == ROLLING_WINDOW:
-            continue  # 기본 윈도우는 이미 산출
+            continue
         rob_stats = compute_rolling_stats(tr, w, warmup_end)
         rob_df = pd.DataFrame(
             {
@@ -489,7 +366,6 @@ def run_pattern2_segment(paths, config, routing, cid, seg):
         )
         robustness_dfs[w] = rob_df
 
-    # --- (3) 비대칭 검정 ---
     lag_order = seg_routing["var_lag_aic"]
 
     if seg_routing["cointegrated"]:
@@ -501,7 +377,6 @@ def run_pattern2_segment(paths, config, routing, cid, seg):
             df, up_pct_col, dn_pct_col, lag_order
         )
 
-    # 보조: 상승/하락기 평균 전이율
     mean_up, mean_dn, n_up, n_dn = compute_mean_tr_by_regime(tr, upstream_pct)
     asym["commodity_id"] = cid
     asym["segment"] = seg
@@ -513,17 +388,8 @@ def run_pattern2_segment(paths, config, routing, cid, seg):
     return zscore_df, asym, robustness_dfs
 
 
-# ---------------------------------------------------------------------------
-# 패턴 2 전체 실행
-# ---------------------------------------------------------------------------
 def run_pattern2(data_dir, output_dir):
-    """
-    A, B 구간 20개에 대해 패턴 2 탐지를 수행하고 CSV로 저장한다.
-
-    Args:
-        data_dir: 데이터 루트 디렉토리
-        output_dir: Phase 7 출력 루트 디렉토리
-    """
+    """A/B 구간 20개에 대해 패턴 2 탐지를 수행하고 CSV로 저장한다."""
     paths = DataPaths(data_dir)
     config = load_product_config(paths)
     routing = load_model_routing(paths)
@@ -540,21 +406,17 @@ def run_pattern2(data_dir, output_dir):
             paths, config, routing, cid, seg
         )
 
-        # Z-score CSV 저장
         zs_path = output_base / "pattern2" / f"{cid}_{seg}_pattern2_zscore.csv"
         zscore_df.to_csv(zs_path, index=False, encoding="utf-8-sig")
 
-        # 로버스트니스 CSV 저장
         for w, rob_df in rob_dfs.items():
             rob_path = (
                 output_base / "robustness" / f"{cid}_{seg}_robustness_W{w}.csv"
             )
             rob_df.to_csv(rob_path, index=False, encoding="utf-8-sig")
 
-        # 비대칭 결과 수집
         asymmetry_results.append(asym)
 
-        # 통계 집계
         not_warmup = ~zscore_df["in_warmup_period"]
         n_total = len(zscore_df)
         n_warmup = zscore_df["in_warmup_period"].sum()
@@ -582,7 +444,6 @@ def run_pattern2(data_dir, output_dir):
             }
         )
 
-        # 로버스트니스 요약
         rob_flags = {ROLLING_WINDOW: n_flag}
         for w, rob_df in rob_dfs.items():
             rob_not_warmup = ~rob_df["in_warmup_period"]
@@ -601,14 +462,11 @@ def run_pattern2(data_dir, output_dir):
             f"{rob_str}"
         )
 
-    # 요약 저장
     summary_df = pd.DataFrame(summary_stats)
     summary_path = output_base / "pattern2" / "pattern2_summary_stats.csv"
     summary_df.to_csv(summary_path, index=False, encoding="utf-8-sig")
 
-    # 비대칭 검정 결과 저장
     asym_df = pd.DataFrame(asymmetry_results)
-    # 컬럼 순서 정리 (pipeline_output_spec_v7 기준)
     asym_cols = [
         "commodity_id", "segment", "model_type",
         "alpha_plus", "alpha_minus",
@@ -635,9 +493,6 @@ def run_pattern2(data_dir, output_dir):
     return summary_df, asym_df
 
 
-# ---------------------------------------------------------------------------
-# 메인 실행
-# ---------------------------------------------------------------------------
 if __name__ == "__main__":
     DATA_DIR = os.path.join(
         os.path.dirname(__file__), "..", "..", "..", "data", "processed"

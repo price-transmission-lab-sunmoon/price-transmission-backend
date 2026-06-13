@@ -1,16 +1,10 @@
-"""Phase 4 — model_params / irf_data / baselines 적재
-
-feature_spec_DB-PIPELINE_v2 §2 입력 데이터 기준.
-exception_design_v3 §2 에러 체이닝 패턴 준수.
+"""Phase 4: model_params / irf_data / baselines 적재.
 
 JSON 필드명 매핑:
-  segment                  → segment_id
-  lag_selection_criterion  → lag_criterion
-  estimation_period_start  → estimation_start  (YYYY-MM → DATE)
-  estimation_period_end    → estimation_end    (YYYY-MM → DATE)
+  segment 는 segment_id 로, lag_selection_criterion 은 lag_criterion 으로 저장.
+  estimation_period_start/end 는 estimation_start/end 로 저장 (YYYY-MM 을 DATE 로 변환).
 
-subperiod_id: Phase 6 완료 전에는 NULL (전체 기간만 적재).
-NULL subperiod_id UPSERT: ON CONFLICT 미지원 → DELETE + INSERT.
+subperiod_id NULL UPSERT: ON CONFLICT 미지원이므로 DELETE 후 INSERT.
 """
 from __future__ import annotations
 
@@ -37,13 +31,10 @@ logger = logging.getLogger(__name__)
 _PHASE4_ROOT = Path(settings.pipeline_data_root) / "phase4"
 
 
-# ── model_params ─────────────────────────────────────────────────────────────
-
 async def _upsert_model_params(
     session: AsyncSession,
     run_id: int,
 ) -> int:
-    """model_params/{cid}_{seg}_model.json → model_params UPSERT (subperiod_id=NULL)."""
     pattern = _PHASE4_ROOT / "model_params"
     files = sorted(pattern.glob("*_model.json")) if pattern.exists() else []
     count = 0
@@ -65,8 +56,7 @@ async def _upsert_model_params(
             estimation_end = normalize_yyyymm_to_date(str(raw_end))
             validate_period_day(estimation_end, "model_params")
 
-        # NULL subperiod_id — PostgreSQL UNIQUE treats NULLs as distinct;
-        # DELETE + INSERT 로 멱등 UPSERT 구현
+        # NULL은 UNIQUE 충돌 미탐지이므로 DELETE 후 INSERT
         await session.execute(
             text("""
                 DELETE FROM model_params
@@ -114,32 +104,24 @@ async def _upsert_model_params(
     return count
 
 
-# ── irf_data ─────────────────────────────────────────────────────────────────
-
 async def _upsert_irf_data(
     session: AsyncSession,
     run_id: int,
 ) -> int:
-    """irf/{cid}_{seg}_irf.csv → irf_data UPSERT (subperiod_id=NULL).
-
-    horizon=0 행에만 peak 컬럼 저장, 나머지 행은 NULL.
-    """
+    """irf_data 적재. horizon=0 행에만 peak 컬럼 저장."""
     pattern = _PHASE4_ROOT / "irf"
     files = sorted(pattern.glob("*_irf.csv")) if pattern.exists() else []
     count = 0
 
     for fp in files:
-        # 파일명에서 commodity_id, segment_id 파싱: {cid}_{seg}_irf.csv
-        stem = fp.stem  # e.g. "wheat_A_irf", "wheat_D_prime_irf"
-        # commodity_id 에는 언더스코어 없음 → 첫 번째 '_' 로 cid 분리
-        base = stem[: stem.rfind("_irf")]   # "wheat_A" | "wheat_D_prime"
+        stem = fp.stem  # e.g. "wheat_A_irf"
+        base = stem[: stem.rfind("_irf")]
         first_us = base.index("_")
         cid = base[:first_us]
-        seg = base[first_us + 1:]           # "A" | "D_prime"
+        seg = base[first_us + 1:]
 
         df = pd.read_csv(fp)
 
-        # NULL subperiod_id — DELETE + INSERT
         await session.execute(
             text("""
                 DELETE FROM irf_data
@@ -171,7 +153,6 @@ async def _upsert_irf_data(
                     "irf_downstream": float(row["irf_downstream"]),
                     "irf_lower_ci": _v(row.get("irf_lower_ci")),
                     "irf_upper_ci": _v(row.get("irf_upper_ci")),
-                    # peak 컬럼: horizon=0 행에만 저장 (db_schema_v5 §irf_data)
                     "irf_peak_horizon": int(row["irf_peak_horizon"]) if h == 0 and not pd.isna(row.get("irf_peak_horizon", float("nan"))) else None,
                     "irf_peak_magnitude": float(row["irf_peak_magnitude"]) if h == 0 and not pd.isna(row.get("irf_peak_magnitude", float("nan"))) else None,
                     "pipeline_run_id": run_id,
@@ -182,13 +163,10 @@ async def _upsert_irf_data(
     return count
 
 
-# ── baselines ─────────────────────────────────────────────────────────────────
-
 async def _upsert_baselines(
     session: AsyncSession,
     run_id: int,
 ) -> int:
-    """baseline/{cid}_{seg}_baseline.json → baselines UPSERT (subperiod_id=NULL)."""
     pattern = _PHASE4_ROOT / "baseline"
     files = sorted(pattern.glob("*_baseline.json")) if pattern.exists() else []
     count = 0
@@ -214,7 +192,6 @@ async def _upsert_baselines(
         if warmup_end:
             validate_period_day(warmup_end, "baselines")
 
-        # NULL subperiod_id — DELETE + INSERT
         await session.execute(
             text("""
                 DELETE FROM baselines
@@ -255,16 +232,11 @@ async def _upsert_baselines(
     return count
 
 
-# ── Phase 4 진입점 ────────────────────────────────────────────────────────────
-
 async def load_phase4(
     session: AsyncSession,
     run_id: int,
 ) -> dict[str, int]:
-    """Phase 4 단일 트랜잭션 — model_params, irf_data, baselines 적재.
-
-    Returns dict with row counts per table.
-    """
+    """Phase 4 단일 트랜잭션으로 model_params, irf_data, baselines 적재."""
     try:
         mp_count = await _upsert_model_params(session, run_id)
         irf_count = await _upsert_irf_data(session, run_id)
@@ -277,7 +249,7 @@ async def load_phase4(
         await session.rollback()
         raise DBError(
             "DB-TX-001",
-            "Phase 4 트랜잭션 롤백 — model_params/irf_data/baselines 적재 실패",
+            "Phase 4 트랜잭션 롤백: model_params/irf_data/baselines 적재 실패",
             {"run_id": run_id, "error": str(e)},
         ) from e
 

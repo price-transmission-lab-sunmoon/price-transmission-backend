@@ -1,11 +1,4 @@
-"""참조 엔드포인트 통합 테스트 — feature_spec_API-REF_v4 §7 완료 기준 검증.
-
-테스트 전략:
-- DB 의존성: app.dependency_overrides[get_db] → AsyncMock (실 DB 불필요)
-- 서비스 패치: unittest.mock.patch("app.services.reference.<func>") — 엔드포인트가
-  `from app.services import reference as ref_svc` 방식으로 import하므로 모듈 경로에서 패치.
-- 픽스처 JSON: tests/fixtures/reference_dummy.json 의 더미 응답과 응답 키·타입 대조.
-"""
+"""참조 엔드포인트 통합 테스트. DB AsyncMock과 서비스 패치 방식을 사용한다."""
 from __future__ import annotations
 
 import json
@@ -35,15 +28,11 @@ from app.schemas.commodity import (  # noqa: E402
 )
 from app.schemas.meta import EventItem, EventListResponse, FreshnessResponse  # noqa: E402
 
-# ── 픽스처 로드 ───────────────────────────────────────────────────────────────
-
 _FIXTURE_PATH = Path(__file__).parent / "fixtures" / "reference_dummy.json"
 
 with _FIXTURE_PATH.open(encoding="utf-8") as _f:
     _FIXTURE: dict[str, Any] = json.load(_f)
 
-
-# ── 더미 응답 빌더 ─────────────────────────────────────────────────────────────
 
 def _build_commodity_list() -> CommodityListResponse:
     items = [
@@ -147,8 +136,6 @@ def _build_freshness() -> FreshnessResponse:
     )
 
 
-# ── DB override ───────────────────────────────────────────────────────────────
-
 async def _override_get_db():
     yield AsyncMock()
 
@@ -160,13 +147,11 @@ def _db_override():
     app.dependency_overrides.pop(get_db, None)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 1. GET /api/v1/commodities
-# ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_commodities_list_200():
-    """§7 기준 #1 — GET /commodities 200 OK + 품목 10개."""
+    """GET /commodities 200 OK + 품목 10개."""
     with patch("app.services.reference.get_commodities", new_callable=AsyncMock) as mock_svc:
         mock_svc.return_value = _build_commodity_list()
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -180,7 +165,7 @@ async def test_commodities_list_200():
 
 @pytest.mark.asyncio
 async def test_commodities_list_fields():
-    """§7 기준 #2 — 각 품목 필수 필드·Literal 값 검증."""
+    """각 품목 필수 필드 및 Literal 값 검증."""
     allowed_clusters = {"grain", "oil_sugar", "tropical", "livestock", "independent"}
     allowed_route_types = {"3seg", "4seg"}
     _yyyymm = re.compile(r"^\d{4}-\d{2}$")
@@ -203,7 +188,7 @@ async def test_commodities_list_fields():
 
 @pytest.mark.asyncio
 async def test_commodities_list_snake_case():
-    """§7 기준 — 응답 키가 snake_case (alias_generator 금지 확인)."""
+    """응답 키가 snake_case인지 확인."""
     with patch("app.services.reference.get_commodities", new_callable=AsyncMock) as mock_svc:
         mock_svc.return_value = _build_commodity_list()
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -237,13 +222,11 @@ async def test_commodities_3seg_segments():
             assert c["segments"] == ["A", "B", "C", "D"], f"4seg 구간 불일치: {c['segments']}"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 2. GET /api/v1/commodities/{id}
-# ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_commodity_detail_wheat_200():
-    """§7 기준 #3 — wheat 상세 조회 200 OK."""
+    """wheat 상세 조회 200 OK."""
     with patch("app.services.reference.get_commodity_detail", new_callable=AsyncMock) as mock_svc:
         mock_svc.return_value = _build_commodity_detail("wheat")
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -258,7 +241,7 @@ async def test_commodity_detail_wheat_200():
 
 @pytest.mark.asyncio
 async def test_commodity_detail_segment_meta_wheat():
-    """wheat segment_meta — A/B/D_prime 구간 메타 검증."""
+    """wheat segment_meta. A/B/D_prime 구간 메타를 검증한다."""
     _yyyymm = re.compile(r"^\d{4}-\d{2}$")
     with patch("app.services.reference.get_commodity_detail", new_callable=AsyncMock) as mock_svc:
         mock_svc.return_value = _build_commodity_detail("wheat")
@@ -277,7 +260,7 @@ async def test_commodity_detail_segment_meta_wheat():
 
 @pytest.mark.asyncio
 async def test_commodity_detail_banana_4seg():
-    """banana 상세 — 4seg segments와 C/D 구간 포함 segment_meta."""
+    """banana 상세. 4seg segments와 C/D 구간 포함 segment_meta를 검증한다."""
     with patch("app.services.reference.get_commodity_detail", new_callable=AsyncMock) as mock_svc:
         mock_svc.return_value = _build_commodity_detail("banana")
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -291,7 +274,7 @@ async def test_commodity_detail_banana_4seg():
 
 @pytest.mark.asyncio
 async def test_commodity_detail_not_found_404():
-    """§7 기준 #4 — 존재하지 않는 품목 → 404 + COMMODITY_NOT_FOUND."""
+    """존재하지 않는 품목 조회 시 404와 COMMODITY_NOT_FOUND를 반환한다."""
     from app.core.exceptions import APIError
 
     def _raise(*_args, **_kwargs):
@@ -316,7 +299,7 @@ async def test_commodity_detail_not_found_404():
 
 @pytest.mark.asyncio
 async def test_commodity_detail_error_envelope():
-    """에러 응답 envelope 구조 — {"error": {"code", "message", "context"}}."""
+    """에러 응답 envelope 구조: {"error": {"code", "message", "context"}}."""
     from app.core.exceptions import APIError
 
     with patch(
@@ -339,13 +322,11 @@ async def test_commodity_detail_error_envelope():
         assert key in err, f"error 내 '{key}' 키 없음"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 3. GET /api/v1/segments
-# ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_segments_200():
-    """§7 기준 #5 — GET /segments 200 OK + 5개 구간."""
+    """GET /segments 200 OK + 5개 구간."""
     with patch("app.services.reference.get_segments", new_callable=AsyncMock) as mock_svc:
         mock_svc.return_value = _build_segments()
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -359,7 +340,7 @@ async def test_segments_200():
 
 @pytest.mark.asyncio
 async def test_segments_ids():
-    """구간 ID 집합 — A/B/C/D/D_prime 5종 모두 존재."""
+    """구간 ID 집합. A/B/C/D/D_prime 5종이 모두 존재해야 한다."""
     with patch("app.services.reference.get_segments", new_callable=AsyncMock) as mock_svc:
         mock_svc.return_value = _build_segments()
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -371,7 +352,7 @@ async def test_segments_ids():
 
 @pytest.mark.asyncio
 async def test_segments_etag_header():
-    """§7 기준 #6 — ETag 헤더 존재 및 형식 (쌍따옴표 포함)."""
+    """ETag 헤더 존재 및 형식 (쌍따옴표 포함)."""
     with patch("app.services.reference.get_segments", new_callable=AsyncMock) as mock_svc:
         mock_svc.return_value = _build_segments()
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -384,7 +365,7 @@ async def test_segments_etag_header():
 
 @pytest.mark.asyncio
 async def test_segments_cache_control_header():
-    """§7 기준 #6 — Cache-Control: public, max-age=86400."""
+    """Cache-Control: public, max-age=86400."""
     with patch("app.services.reference.get_segments", new_callable=AsyncMock) as mock_svc:
         mock_svc.return_value = _build_segments()
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -413,13 +394,11 @@ async def test_segments_fields():
         assert isinstance(s["ml_applied"], bool)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 4. GET /api/v1/events
-# ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_events_200():
-    """§7 기준 #7 — GET /events 200 OK + 5개 이벤트."""
+    """GET /events 200 OK + 5개 이벤트."""
     with patch("app.services.reference.get_events", new_callable=AsyncMock) as mock_svc:
         mock_svc.return_value = _build_events()
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -447,7 +426,7 @@ async def test_events_date_format():
 
 @pytest.mark.asyncio
 async def test_events_etag_and_cache_headers():
-    """§7 기준 #8 — ETag + Cache-Control 헤더 동시 존재."""
+    """ETag + Cache-Control 헤더 동시 존재."""
     with patch("app.services.reference.get_events", new_callable=AsyncMock) as mock_svc:
         mock_svc.return_value = _build_events()
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -460,7 +439,7 @@ async def test_events_etag_and_cache_headers():
 
 @pytest.mark.asyncio
 async def test_events_etag_stable():
-    """같은 데이터 2회 요청 시 ETag 동일 — 캐시 안정성."""
+    """같은 데이터 2회 요청 시 ETag가 동일해야 한다. 캐시 안정성 검증."""
     with patch("app.services.reference.get_events", new_callable=AsyncMock) as mock_svc:
         mock_svc.return_value = _build_events()
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -471,13 +450,11 @@ async def test_events_etag_stable():
     assert r1.headers["etag"] == r2.headers["etag"], "동일 데이터에 대해 ETag가 달라짐"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 5. GET /api/v1/freshness
-# ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_freshness_200():
-    """§7 기준 #9 — GET /freshness 200 OK."""
+    """GET /freshness 200 OK."""
     with patch("app.services.reference.get_freshness", new_callable=AsyncMock) as mock_svc:
         mock_svc.return_value = _build_freshness()
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -491,7 +468,7 @@ async def test_freshness_200():
 
 @pytest.mark.asyncio
 async def test_freshness_date_formats():
-    """§7 기준 #10 — 날짜 직렬화 형식 검증 (YYYY-MM / YYYY-MM-DD / ISO-8601-Z)."""
+    """날짜 직렬화 형식 검증 (YYYY-MM / YYYY-MM-DD / ISO-8601-Z)."""
     _yyyymm = re.compile(r"^\d{4}-\d{2}$")
     _yyyymmdd = re.compile(r"^\d{4}-\d{2}-\d{2}$")
     _iso8601z = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")

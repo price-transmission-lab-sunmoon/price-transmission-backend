@@ -1,8 +1,4 @@
-"""pipeline_runs 기록 + 트랜잭션 공통 유틸리티
-
-feature_spec_DB-PIPELINE_v2 §3.3, §5.1 기준.
-exception_design_v3 §2 에러 체이닝 패턴 준수.
-"""
+"""pipeline_runs 기록 + 트랜잭션 공통 유틸리티."""
 from __future__ import annotations
 
 import logging
@@ -18,10 +14,8 @@ from app.core.exceptions import DBError
 logger = logging.getLogger(__name__)
 
 
-# ── 공통 유틸리티 ────────────────────────────────────────────────────────────
-
 def _v(val):
-    """pandas NaN / None → Python None, 그 외 원형 반환."""
+    """pandas NaN 또는 None이면 Python None을 반환하고, 그 외는 원형을 반환한다."""
     if val is None:
         return None
     try:
@@ -33,13 +27,8 @@ def _v(val):
     return val
 
 
-# ── 날짜 유틸리티 ────────────────────────────────────────────────────────────
-
 def normalize_yyyymm_to_date(raw: str) -> date:
-    """'YYYY-MM' 문자열 → date(YYYY, MM, 1).
-
-    D-11: period.day == 1 검증. 실패 시 DB-TYPE-001 FATAL.
-    """
+    """'YYYY-MM' 문자열을 date(YYYY, MM, 1)로 변환한다. 실패 시 DB-TYPE-001."""
     try:
         parts = raw.strip().split("-")
         if len(parts) != 2:
@@ -49,13 +38,13 @@ def normalize_yyyymm_to_date(raw: str) -> date:
     except Exception as e:
         raise DBError(
             "DB-TYPE-001",
-            f"period 변환 실패 — 월초(YYYY-MM-01) 아님: {raw!r}",
+            f"period 변환 실패: 월초(YYYY-MM-01) 형식 아님: {raw!r}",
             {"period_raw": raw},
         ) from e
 
 
 def validate_period_day(d: date, table: str) -> None:
-    """period.day == 1 검증 (D-11). 실패 시 DB-TYPE-001 FATAL."""
+    """period.day == 1 검증. 실패 시 DB-TYPE-001."""
     if d.day != 1:
         raise DBError(
             "DB-TYPE-001",
@@ -64,17 +53,12 @@ def validate_period_day(d: date, table: str) -> None:
         )
 
 
-# ── pipeline_runs CRUD ───────────────────────────────────────────────────────
-
 async def create_pipeline_run(
     session: AsyncSession,
     run_date: date,
     data_up_to: date,
 ) -> int:
-    """pipeline_runs 에 'running' 상태로 1건 INSERT. run_id 반환.
-
-    중복 run_date 시 DB-RUN-001 FATAL.
-    """
+    """pipeline_runs 에 'running' 상태로 INSERT. run_id 반환."""
     try:
         result = await session.execute(
             text(
@@ -94,7 +78,7 @@ async def create_pipeline_run(
         await session.rollback()
         raise DBError(
             "DB-RUN-001",
-            f"pipeline_runs 중복 생성 — run_date={run_date} 이미 존재",
+            f"pipeline_runs 중복 생성: run_date={run_date} 이미 존재",
             {"run_date": str(run_date)},
         ) from e
 
@@ -106,7 +90,6 @@ async def update_pipeline_run_status(
     phases_run: list[str] | None = None,
     error_message: str | None = None,
 ) -> None:
-    """pipeline_runs.status 갱신 + finished_at 기록."""
     await session.execute(
         text(
             """
@@ -137,7 +120,6 @@ async def append_phase_to_run(
     run_id: int,
     phase: str,
 ) -> None:
-    """phases_run 배열에 완료 Phase 번호를 누적 추가."""
     await session.execute(
         text(
             """
@@ -157,13 +139,9 @@ async def upsert_data_freshness(
     data_up_to: date,
     next_run_date: date,
 ) -> None:
-    """data_freshness 테이블 — 항상 최신 1개 행 유지 UPSERT.
+    """data_freshness 최신 1개 행 유지 UPSERT.
 
-    feature_spec_DB-PIPELINE_v2 §3.2: Phase 전체 완료 후 갱신.
-
-    UPDATE 우선 실행 → rowcount=0(행 없음)이면 INSERT.
-    data_freshness는 PK 외 별도 UNIQUE 제약이 없으므로
-    INSERT-ON CONFLICT 패턴은 중복 행을 방지할 수 없다.
+    UPDATE를 먼저 시도하고, rowcount=0이면 INSERT한다 (UNIQUE 제약 없어 ON CONFLICT 불가).
     """
     result = await session.execute(
         text(
@@ -179,7 +157,6 @@ async def upsert_data_freshness(
         {"data_up_to": data_up_to, "next_run_date": next_run_date, "run_id": run_id},
     )
     if result.rowcount == 0:
-        # 행이 없을 때만 INSERT (최초 실행)
         await session.execute(
             text(
                 """

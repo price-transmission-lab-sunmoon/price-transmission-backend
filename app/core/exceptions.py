@@ -1,4 +1,4 @@
-"""예외 클래스 계층 + 에러 체이닝 — exception_spec_vN §부록 A + exception_design_vN §2 구현."""
+"""예외 클래스 계층 + 에러 체이닝 헬퍼."""
 from __future__ import annotations
 
 import logging
@@ -9,8 +9,6 @@ from fastapi.responses import JSONResponse
 
 logger = logging.getLogger("app")
 
-
-# ── 예외 클래스 계층 (exception_spec_vN §부록 A) ────────────────────────────
 
 class ProjectError(Exception):
     def __init__(self, code: str, message: str, context: dict | None = None):
@@ -41,24 +39,21 @@ class APIError(ProjectError):
 
 
 class PipelineError(ProjectError):
-    """파이프라인 단계 예외 (PL-*). phase 속성으로 어느 Phase에서 발생했는지 식별.
-
-    feat/pipeline-phase* 브랜치에서 실제 파이프라인 코드가 추가될 때 사용한다.
-    """
+    """파이프라인 단계 예외 (PL-*). phase 속성으로 발생 단계를 식별."""
     def __init__(self, code: str, message: str, context: dict | None = None, phase: str = ""):
         super().__init__(code, message, context)
         self.phase = phase
 
 
 class ParseError(ProjectError):
-    """DB→API 또는 API→FE 경계에서 발생하는 파싱 예외 (PARSE-*)."""
+    """DB에서 API, 또는 API에서 FE 경계에서 발생하는 파싱 예외 (PARSE-*)."""
     def __init__(self, code: str, message: str, context: dict | None = None, boundary: str = ""):
         super().__init__(code, message, context)
         self.boundary = boundary
 
 
 class ConfigError(ProjectError):
-    """설정·환경 변수 예외 (CFG-*). FATAL — 부팅 중단."""
+    """설정 및 환경 변수 예외 (CFG-*). FATAL. 부팅 중단."""
     pass
 
 
@@ -77,10 +72,8 @@ class ExternalAPIError(ProjectError):
         self.retry_count = retry_count
 
 
-# ── 에러 체이닝 (exception_design_vN §2) ────────────────────────────────────
-
 def _format_chain(chain: list[Exception]) -> str:
-    """예외 체인을 ORIGIN → 현재 순으로 포맷팅 (exception_design_vN §2.2)."""
+    """예외 체인을 ORIGIN부터 현재까지 순서대로 포맷팅."""
     lines: list[str] = []
     for i, exc in enumerate(chain):
         if isinstance(exc, ProjectError):
@@ -100,12 +93,12 @@ def _format_chain(chain: list[Exception]) -> str:
 
 
 def trace_error_chain(exc: Exception) -> dict:
-    """예외 체인을 역추적하여 ORIGIN·전파 경로·포맷 문자열 반환 (exception_design_vN §2.2).
+    """예외 체인을 역추적하여 ORIGIN, 전파 경로, 포맷 문자열 반환.
 
     Returns:
         {
             "origin": Exception,       # 최초 발생 예외
-            "chain": list[Exception],  # ORIGIN → 현재 순서
+            "chain": list[Exception],  # ORIGIN부터 현재 순서
             "formatted": str,          # 로그 출력용 문자열
         }
     """
@@ -122,8 +115,6 @@ def trace_error_chain(exc: Exception) -> dict:
     }
 
 
-# ── 응답 헬퍼 ────────────────────────────────────────────────────────────────
-
 def _error_body(code: str, message: str, context: dict | None = None) -> dict:
     body: dict = {"code": code, "message": message}
     if context:
@@ -131,10 +122,8 @@ def _error_body(code: str, message: str, context: dict | None = None) -> dict:
     return {"error": body}
 
 
-# ── 전역 예외 핸들러 (exception_design_vN §2.4 + frame_spec_vN §8.4) ────────────
-
 async def api_error_handler(request: Request, exc: APIError) -> JSONResponse:
-    """APIError → http_status / public_code 반환."""
+    """APIError를 http_status, public_code로 변환하여 반환."""
     result = trace_error_chain(exc)
     logger.error(
         result["formatted"],
@@ -148,7 +137,7 @@ async def api_error_handler(request: Request, exc: APIError) -> JSONResponse:
 
 
 async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
-    """Pydantic 검증 실패 → 400 / API-VAL-001."""
+    """Pydantic 검증 실패 시 400, API-VAL-001 반환."""
     errors = exc.errors()
     ctx = {
         "loc": str(errors[0].get("loc")) if errors else "",
@@ -165,10 +154,9 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
 
 
 async def internal_error_handler(request: Request, exc: Exception) -> JSONResponse:
-    """DBError / PipelineError / ParseError / ExternalAPIError / 기타 → 500 / INTERNAL_ERROR.
+    """DBError, PipelineError, ParseError, ExternalAPIError, 기타 예외 시 500, INTERNAL_ERROR 반환.
 
-    ORIGIN 코드를 보존하여 로깅하고 사용자에게는 INTERNAL_ERROR만 노출
-    (exception_spec_vN §4 API-INT-001, exception_design_vN §2.4).
+    ORIGIN 코드를 보존하여 로깅하고, 사용자에게는 INTERNAL_ERROR만 노출한다.
     """
     result = trace_error_chain(exc)
     origin = result["origin"]

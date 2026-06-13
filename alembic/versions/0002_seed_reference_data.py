@@ -1,7 +1,4 @@
-"""0002_seed_reference_data
-
-commodities 10행 + segments 5행 + external_events 5행 시드 적재.
-출처: db_schema_vN §초기 데이터 (frame_spec_vN §8.9, §8.1).
+"""0002_seed_reference_data: commodities 10행 + segments 5행 + external_events 5행 시드 적재.
 
 Revision ID: 0002
 Revises: 0001
@@ -22,7 +19,6 @@ depends_on: str | None = None
 def upgrade() -> None:
     conn = op.get_bind()
 
-    # ── commodities 10행 (db_schema_vN §commodities 초기 데이터) ─────────────
     conn.execute(
         sa.text("""
             INSERT INTO commodities (commodity_id, name_kr, name_en, cluster, has_wholesale, route_type)
@@ -41,7 +37,6 @@ def upgrade() -> None:
         """)
     )
 
-    # ── segments 5행 (db_schema_vN §segments 초기 데이터) ────────────────────
     conn.execute(
         sa.text("""
             INSERT INTO segments
@@ -73,7 +68,6 @@ def upgrade() -> None:
         """)
     )
 
-    # ── external_events 5행 (db_schema_vN §external_events 초기 데이터) ──────
     conn.execute(
         sa.text("""
             INSERT INTO external_events (event_key, label_kr, start_date, end_date, color_hex)

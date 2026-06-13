@@ -1,11 +1,4 @@
-"""ORM models — Phase 6 계량 테이블
-
-frame_spec_backend_vN §8.6 분할 기준:
-  breakpoints (Phase 6)
-  subperiods  (Phase 6)
-
-db_schema_v5 컬럼명·타입 기준으로 작성.
-"""
+"""ORM models: Phase 6 계량 테이블 (breakpoints, subperiods)."""
 from __future__ import annotations
 
 from sqlalchemy import (
@@ -25,11 +18,7 @@ from app.db.base import Base
 
 
 class Breakpoint(Base):
-    """Phase 6 구조 변화 시점 — db_schema_v5 §breakpoints
-
-    Chow Test 고정 3개 시점: 2008-01, 2020-01, 2022-01 (D-07).
-    bp_dates: "YYYY-MM" → DATE "YYYY-MM-01" 월초 승격 후 적재.
-    """
+    """Phase 6 구조 변화 시점. Chow Test 고정 3개 시점: 2008-01, 2020-01, 2022-01."""
 
     __tablename__ = "breakpoints"
 
@@ -37,10 +26,10 @@ class Breakpoint(Base):
     commodity_id: Mapped[str] = mapped_column(String(20), ForeignKey("commodities.commodity_id"), nullable=False)
     segment_id: Mapped[str] = mapped_column(String(10), ForeignKey("segments.segment_id"), nullable=False)
 
-    # Bai-Perron — "YYYY-MM" → DATE[] 월초 승격. 파싱 실패 시 NULL (DB-ARR-002 WARN)
+    # Bai-Perron 탐지 시점 목록, 파싱 실패 시 NULL
     bp_dates: Mapped[list | None] = mapped_column(ARRAY(Date))
 
-    # Chow Test 결과 — 고정 3개 시점
+    # Chow Test 결과. 고정 3개 시점
     chow_2008_f: Mapped[float | None] = mapped_column(Numeric(10, 4))
     chow_2008_pvalue: Mapped[float | None] = mapped_column(Numeric(8, 4))
     chow_2008_sig: Mapped[bool | None] = mapped_column(Boolean)
@@ -56,11 +45,7 @@ class Breakpoint(Base):
 
 
 class Subperiod(Base):
-    """Phase 6 하위 기간 분할 — db_schema_v5 §subperiods
-
-    period_start, period_end: "YYYY-MM" → DATE "YYYY-MM-01" 월초 승격 후 적재.
-    merged_with_index: JSON merged_with 값은 subperiod.id 아닌 subperiod_index 기준 (D-07).
-    """
+    """Phase 6 하위 기간 분할. merged_with_index는 subperiod.id가 아닌 subperiod_index 기준."""
 
     __tablename__ = "subperiods"
 

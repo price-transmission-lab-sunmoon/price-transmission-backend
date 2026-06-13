@@ -1,9 +1,6 @@
 """0004_add_cointegration_results
 
-cointegration_results 테이블 추가 — feat/be-api-reference 임시 정의.
-
-⚠️  feat/pipeline-phase2-3 착수 시 중복 충돌 주의.
-    (feature_spec_API-REF_v4 §2, frame_spec_backend_vN §8.6).
+cointegration_results 테이블 추가.
 
 Revision ID: 0004
 Revises: 0003
@@ -50,7 +47,7 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.text("false"),
         ),
-        sa.Column("model_type", sa.String(10), nullable=True),   # 'VAR' | 'VECM'
+        sa.Column("model_type", sa.String(10), nullable=True),
         sa.Column("granger_direction", sa.String(30), nullable=True),
         sa.Column("pipeline_run_id", sa.Integer(), nullable=True),
         sa.Column(

@@ -1,7 +1,4 @@
-"""Phase 7 — stat_timeseries / anomaly_results 적재
-
-feature_spec_DB-PIPELINE_v2 §2 입력 데이터 기준.
-exception_design_v3 §2 에러 체이닝 패턴 준수.
+"""Phase 7. stat_timeseries, anomaly_results 적재
 
 입력:
   data/processed/phase7/stat_timeseries/{cid}_{seg}_stat_timeseries.csv (33개)
@@ -12,11 +9,8 @@ exception_design_v3 §2 에러 체이닝 패턴 준수.
   data/processed/phase7_ml/predictions/{cid}_{seg}_ml_predictions.csv
 
 적재 대상:
-  stat_timeseries  — 전 시점 시계열 (33개 구간 × 모든 월)
-  anomaly_results  — 탐지 이벤트만 (confidence_grade IS NOT NULL인 행, D-02)
-
-D-02: confidence_grade=null(정상 월)은 anomaly_results에 적재하지 않는다.
-D-13: 동월 복수 패턴은 1행 (primary_pattern은 심각도 기준 pattern2>pattern1>pattern3).
+  stat_timeseries: 전 시점 시계열 (33개 구간의 모든 월)
+  anomaly_results: confidence_grade IS NOT NULL인 탐지 이벤트만
 """
 from __future__ import annotations
 
@@ -42,7 +36,7 @@ ZSCORE_MAX = 999999.9
 
 
 def _F(val, limit: float = NUMERIC_MAX) -> float | None:
-    """float NaN/Inf/over-range → None (numeric(12,6) overflow 방지)."""
+    """float NaN, Inf, 범위 초과값을 None으로 변환한다 (numeric(12,6) overflow 방지)."""
     if val is None:
         return None
     try:
@@ -59,7 +53,7 @@ def _FZ(val) -> float | None:
 
 
 def _B(val) -> bool | None:
-    """bool or None — NaN/None → None."""
+    """bool 또는 None을 반환한다. NaN이나 None이면 None을 반환한다."""
     if val is None or (isinstance(val, float) and math.isnan(val)):
         return None
     return bool(val)
@@ -80,24 +74,17 @@ def _I(val) -> int | None:
         return None
 
 
-# ── stat_timeseries ──────────────────────────────────────────────────────────
-
 async def load_stat_timeseries(session: AsyncSession, run_id: int) -> int:
-    """phase7/stat_timeseries/*.csv → stat_timeseries UPSERT.
-
-    Returns:
-        적재된 행 수.
-    """
+    """phase7/stat_timeseries/*.csv를 읽어 stat_timeseries에 INSERT한다. 적재 행 수를 반환한다."""
     ts_dir = _PHASE7_ROOT / "stat_timeseries"
     files = sorted(ts_dir.glob("*_stat_timeseries.csv")) if ts_dir.exists() else []
     if not files:
         logger.warning(
-            "Phase 7 stat_timeseries CSV 없음 — skip",
+            "Phase 7 stat_timeseries CSV 없음, skip",
             extra={"dir": str(ts_dir)},
         )
         return 0
 
-    # 멱등 적재 — 기존 행 삭제 후 INSERT (UNIQUE 제약 (cid,seg,period) 기준)
     await session.execute(text("DELETE FROM stat_timeseries"))
 
     total = 0
@@ -173,10 +160,8 @@ async def load_stat_timeseries(session: AsyncSession, run_id: int) -> int:
     return total
 
 
-# ── anomaly_results 머지 헬퍼 ────────────────────────────────────────────────
-
 def _read_pattern_csvs(subdir: str, suffix: str) -> pd.DataFrame:
-    """phase7/{subdir}/*{suffix}.csv 모두 합쳐 단일 DataFrame 반환 (segment→segment_id)."""
+    """phase7/{subdir}/*{suffix}.csv 전체를 단일 DataFrame으로 합산."""
     pdir = _PHASE7_ROOT / subdir
     if not pdir.exists():
         return pd.DataFrame()
@@ -206,13 +191,8 @@ def _read_ml_csvs(subdir: str, suffix: str) -> pd.DataFrame:
     return pd.concat(dfs, ignore_index=True)
 
 
-# ── anomaly_results ──────────────────────────────────────────────────────────
-
 async def load_anomaly_results(session: AsyncSession, run_id: int) -> int:
-    """grades 기준으로 pattern1/2/3 + ml_predictions 머지하여 anomaly_results 적재.
-
-    D-02: grades에 들어있는 행만 적재 (confidence_grade IS NOT NULL).
-    """
+    """grades 기준으로 pattern1/2/3 + ml_predictions 머지하여 anomaly_results 적재."""
     p1 = _read_pattern_csvs("pattern1", "_pattern1")
     p2 = _read_pattern_csvs("pattern2", "_pattern2_zscore")
     p3 = _read_pattern_csvs("pattern3", "_pattern3")
@@ -220,7 +200,7 @@ async def load_anomaly_results(session: AsyncSession, run_id: int) -> int:
     preds = _read_ml_csvs("predictions", "_ml_predictions")
 
     if grades.empty:
-        logger.warning("confidence_grades 없음 — anomaly_results 0행")
+        logger.warning("confidence_grades 없음, anomaly_results 0행")
         await session.execute(text("DELETE FROM anomaly_results"))
         return 0
 
@@ -277,14 +257,13 @@ async def load_anomaly_results(session: AsyncSession, run_id: int) -> int:
         for col in ("if_anomaly", "lof_anomaly", "svm_anomaly", "ml_vote_pred"):
             merged[col] = None
 
-    # 멱등 적재 — DELETE 후 INSERT
     await session.execute(text("DELETE FROM anomaly_results"))
 
     rows = []
     for _, row in merged.iterrows():
         pt_raw = row.get("pattern_type")
         if pt_raw is None or (isinstance(pt_raw, float) and pd.isna(pt_raw)):
-            pattern_type = "pattern1"  # ML-only 탐지는 pattern1 자리에 보관 (관례)
+            pattern_type = "pattern1"
         else:
             pattern_type = str(pt_raw)
             if pattern_type not in ("pattern1", "pattern2", "pattern3"):
@@ -317,7 +296,6 @@ async def load_anomaly_results(session: AsyncSession, run_id: int) -> int:
             "stat_detected": bool(_B(row.get("stat_detected")) or False),
             "ml_detected": bool(_B(row.get("ml_detected")) or False),
             "ml_vote": _I(row.get("ml_consensus_count") if not pd.isna(row.get("ml_consensus_count")) else row.get("ml_vote_pred")) or 0,
-            # *_anomaly: 항상 boolean (회신 v2 §2.2)
             "if_anomaly": bool(_B(row.get("if_anomaly")) or False),
             "lof_anomaly": bool(_B(row.get("lof_anomaly")) or False),
             "svm_anomaly": bool(_B(row.get("svm_anomaly")) or False),
@@ -365,10 +343,8 @@ async def load_anomaly_results(session: AsyncSession, run_id: int) -> int:
     return len(rows)
 
 
-# ── REFRESH MATERIALIZED VIEW ────────────────────────────────────────────────
-
 async def refresh_anomaly_density(session: AsyncSession) -> None:
-    """mv_anomaly_density_yearly 갱신. 실패해도 적재 자체는 성공으로 처리."""
+    """mv_anomaly_density_yearly 갱신. 실패해도 트랜잭션은 유지."""
     try:
         await session.execute(text("REFRESH MATERIALIZED VIEW CONCURRENTLY mv_anomaly_density_yearly"))
     except Exception:
@@ -378,27 +354,20 @@ async def refresh_anomaly_density(session: AsyncSession) -> None:
             logger.warning(f"MV refresh 실패 (무시): {e}")
 
 
-# ── 단일 트랜잭션 진입점 ──────────────────────────────────────────────────────
-
 async def load_phase7(session: AsyncSession, run_id: int) -> dict[str, int]:
-    """Phase 7 단일 트랜잭션 — stat_timeseries + anomaly_results 적재.
-
-    Returns:
-        {"stat_timeseries": N, "anomaly_results": M}
-    """
+    """Phase 7 단일 트랜잭션: stat_timeseries 및 anomaly_results 적재."""
     try:
         ts_count = await load_stat_timeseries(session, run_id)
         ar_count = await load_anomaly_results(session, run_id)
         await refresh_anomaly_density(session)
         await session.commit()
-    except DBError:
-        await session.rollback()
-        raise
     except Exception as e:
         await session.rollback()
+        if isinstance(e, DBError):
+            raise
         raise DBError(
             "DB-TX-001",
-            "Phase 7 트랜잭션 롤백 — stat_timeseries/anomaly_results 적재 실패",
+            "Phase 7 트랜잭션 롤백: stat_timeseries/anomaly_results 적재 실패",
             {"run_id": run_id, "error": str(e)},
         ) from e
 

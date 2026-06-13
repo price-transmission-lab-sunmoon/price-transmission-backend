@@ -1,4 +1,4 @@
-"""ORM 모델 — commodities, segments, external_events (db_schema_vN §참조 테이블)."""
+"""ORM 모델: commodities, segments, external_events."""
 from sqlalchemy import TIMESTAMP, Boolean, Column, Date, Integer, String
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.sql import func
@@ -50,6 +50,5 @@ class ExternalEvent(Base):
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=False)
     color_hex = Column(String(10), nullable=False)
-    # v2 (2026-05-21): FE에서 품목별 사건 필터링용 — 영향 받는 commodity_id 목록
-    commodities = Column(ARRAY(String(20)))
+    commodities = Column(ARRAY(String(20)))  # 영향 받는 commodity_id 목록
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())

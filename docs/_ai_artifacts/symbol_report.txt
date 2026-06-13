@@ -1,0 +1,19 @@
+== 집계: COMMENT 0 / DOCSTRING 0 / STRING 12 ==
+
+### COMMENT (0)
+
+### DOCSTRING (0)
+
+### STRING (12)
+alembic\versions\0002_seed_reference_data.py:41 [→] """\n            INSERT INTO segments\n                (segment_id, label_kr, upstream_col, downstream_col,\n           
+alembic\versions\0009_events_v2_and_commodities.py:31 [·] "2010 러시아 가뭄·수출 금지"
+app\api\v1\endpoints\meta.py:117 [·] "데이터 수집·전처리"
+app\api\v1\endpoints\meta.py:127 [·] "결과 종합·등급화"
+app\api\v1\endpoints\meta.py:212 [·] "전이율이 롤링 Z-score와 IQR 기준을 동시 초과하거나, TECM/비대칭 VAR에서 상승·하락 조정 속도가 유의미하게 다른 경우"
+app\services\anomaly_panel.py:219 [·] "통계·ML 일치"
+app\services\meta.py:30 [·] "데이터 수집·전처리"
+app\services\meta.py:40 [·] "결과 종합·등급화"
+app\services\meta.py:73 [·] "TECM/비대칭 VAR에서 상승·하락 조정 속도가 유의미하게 다른 경우"
+app\services\meta.py:81 [±] "국제가 안정기(원화 환산 월 변동 ±3% 이내)에 "
+tests\phase7_ml\eval_common.py:21 [·] "2010 러시아 가뭄·수출 금지"
+tests\phase7_ml\generate_dashboard.py:98 [—,·] f"""<!DOCTYPE html>\n<html lang="ko">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width
